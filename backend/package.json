@@ -6,7 +6,8 @@
   "type": "commonjs",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "seed": "node db/seed.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
