@@ -1,5 +1,6 @@
 const express = require("express");
 
+const adminRoutes = require("./admin");
 const authRoutes = require("./auth");
 const catalogRoutes = require("./catalog");
 const subscriptionsRoutes = require("./subscriptions");
@@ -13,5 +14,6 @@ router.get("/", (req, res) => {
 router.use("/auth", authRoutes);
 router.use("/catalog", catalogRoutes);
 router.use("/user/subscriptions", subscriptionsRoutes);
+router.use("/admin/catalog", adminRoutes);
 
 module.exports = router;

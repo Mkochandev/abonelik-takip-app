@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<title>Admin Panel — Abonelik Kataloğu</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    max-width: 960px;
+    margin: 32px auto;
+    padding: 0 16px;
+    color: #1a1a1a;
+  }
+  h1 {
+    font-size: 22px;
+  }
+  h2 {
+    font-size: 16px;
+    margin-top: 32px;
+  }
+  #authSection {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  input, button {
+    font-size: 14px;
+    padding: 8px 10px;
+    box-sizing: border-box;
+  }
+  input {
+    border: 1px solid #ccc;
+    border-radius: 6px;
+  }
+  button {
+    border: none;
+    border-radius: 6px;
+    background: #2563eb;
+    color: #fff;
+    cursor: pointer;
+  }
+  button:hover {
+    background: #1d4ed8;
+  }
+  button.danger {
+    background: #dc2626;
+  }
+  button.danger:hover {
+    background: #b91c1c;
+  }
+  button.secondary {
+    background: #6b7280;
+  }
+  button.secondary:hover {
+    background: #4b5563;
+  }
+  #mainSection {
+    display: none;
+  }
+  #newForm {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  #newForm input {
+    flex: 1;
+    min-width: 100px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px;
+    border-bottom: 1px solid #eee;
+    font-size: 14px;
+  }
+  th {
+    color: #555;
+    font-weight: 600;
+  }
+  td.actions {
+    display: flex;
+    gap: 6px;
+  }
+  #status {
+    margin-top: 12px;
+    font-size: 14px;
+  }
+  #status.error {
+    color: #dc2626;
+  }
+  #status.ok {
+    color: #16a34a;
+  }
+  .price-input {
+    width: 90px;
+  }
+</style>
+</head>
+<body>
+  <h1>Admin Panel — Abonelik Kataloğu</h1>
+
+  <div id="authSection">
+    <input id="secretInput" type="password" placeholder="Admin secret" />
+    <button id="connectButton">Bağlan</button>
+  </div>
+
+  <div id="mainSection">
+    <h2>Yeni Ekle</h2>
+    <form id="newForm">
+      <input id="newAppName" placeholder="app_name" required />
+      <input id="newPlanName" placeholder="plan_name" />
+      <input id="newPrice" type="number" step="0.01" placeholder="current_price" required />
+      <input id="newCurrency" placeholder="currency (örn. TRY)" />
+      <input id="newSourceUrl" placeholder="source_url" />
+      <button type="submit">Ekle</button>
+    </form>
+
+    <h2>Katalog</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>app_name</th>
+          <th>plan_name</th>
+          <th>current_price</th>
+          <th>currency</th>
+          <th>last_checked_at</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="catalogBody"></tbody>
+    </table>
+  </div>
+
+  <div id="status"></div>
+
+  <script>
+    const API_BASE = "/api/admin/catalog";
+    let adminSecret = sessionStorage.getItem("adminSecret") || "";
+    let catalogCache = [];
+    let editingId = null;
+
+    const authSection = document.getElementById("authSection");
+    const mainSection = document.getElementById("mainSection");
+    const secretInput = document.getElementById("secretInput");
+    const statusEl = document.getElementById("status");
+    const catalogBody = document.getElementById("catalogBody");
+    const newForm = document.getElementById("newForm");
+
+    function setStatus(message, type) {
+      statusEl.textContent = message || "";
+      statusEl.className = type || "";
+    }
+
+    function showAuthenticated() {
+      authSection.style.display = "none";
+      mainSection.style.display = "block";
+    }
+
+    function showLoggedOut() {
+      authSection.style.display = "flex";
+      mainSection.style.display = "none";
+    }
+
+    async function apiRequest(path, options = {}) {
+      const response = await fetch(API_BASE + path, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Secret": adminSecret,
+          ...(options.headers || {}),
+        },
+      });
+
+      if (response.status === 401) {
+        sessionStorage.removeItem("adminSecret");
+        adminSecret = "";
+        showLoggedOut();
+        throw new Error("Admin secret geçersiz");
+      }
+
+      if (response.status === 204) {
+        return null;
+      }
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error((data && data.error) || "Bilinmeyen bir hata oluştu");
+      }
+
+      return data;
+    }
+
+    async function loadCatalog() {
+      try {
+        const data = await apiRequest("", { method: "GET" });
+        catalogCache = data.catalog;
+        renderTable();
+        setStatus("");
+      } catch (err) {
+        setStatus(err.message, "error");
+      }
+    }
+
+    function renderTable() {
+      catalogBody.innerHTML = "";
+
+      for (const item of catalogCache) {
+        const row = document.createElement("tr");
+        const isEditing = editingId === item.id;
+
+        const priceCell = isEditing
+          ? `<input class="price-input" type="number" step="0.01" value="${item.current_price}" id="editPriceInput" />`
+          : escapeHtml(item.current_price);
+
+        const actionsCell = isEditing
+          ? `<button data-action="save" data-id="${item.id}">Kaydet</button>
+             <button class="secondary" data-action="cancel">İptal</button>`
+          : `<button data-action="edit" data-id="${item.id}">Düzenle</button>
+             <button class="danger" data-action="delete" data-id="${item.id}">Sil</button>`;
+
+        row.innerHTML = `
+          <td>${escapeHtml(item.app_name)}</td>
+          <td>${escapeHtml(item.plan_name || "")}</td>
+          <td>${priceCell} ${!isEditing ? escapeHtml(item.currency) : ""}</td>
+          <td>${escapeHtml(item.currency)}</td>
+          <td>${item.last_checked_at ? new Date(item.last_checked_at).toLocaleString("tr-TR") : "—"}</td>
+          <td class="actions">${actionsCell}</td>
+        `;
+
+        catalogBody.appendChild(row);
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      }[ch]));
+    }
+
+    catalogBody.addEventListener("click", async (event) => {
+      const button = event.target.closest("button");
+      if (!button) return;
+
+      const action = button.dataset.action;
+      const id = button.dataset.id;
+
+      if (action === "edit") {
+        editingId = id;
+        renderTable();
+      } else if (action === "cancel") {
+        editingId = null;
+        renderTable();
+      } else if (action === "delete") {
+        if (!confirm("Bu kaydı silmek istediğine emin misin?")) return;
+
+        try {
+          await apiRequest(`/${id}`, { method: "DELETE" });
+          setStatus("Kayıt silindi.", "ok");
+          await loadCatalog();
+        } catch (err) {
+          setStatus(err.message, "error");
+        }
+      } else if (action === "save") {
+        const input = document.getElementById("editPriceInput");
+        const newPrice = input.value;
+
+        try {
+          await apiRequest(`/${id}`, {
+            method: "PUT",
+            body: JSON.stringify({ current_price: newPrice }),
+          });
+          editingId = null;
+          setStatus("Fiyat güncellendi.", "ok");
+          await loadCatalog();
+        } catch (err) {
+          setStatus(err.message, "error");
+        }
+      }
+    });
+
+    newForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const body = {
+        app_name: document.getElementById("newAppName").value.trim(),
+        plan_name: document.getElementById("newPlanName").value.trim() || undefined,
+        current_price: document.getElementById("newPrice").value,
+        currency: document.getElementById("newCurrency").value.trim() || undefined,
+        source_url: document.getElementById("newSourceUrl").value.trim() || undefined,
+      };
+
+      try {
+        await apiRequest("", { method: "POST", body: JSON.stringify(body) });
+        newForm.reset();
+        setStatus("Kayıt eklendi.", "ok");
+        await loadCatalog();
+      } catch (err) {
+        setStatus(err.message, "error");
+      }
+    });
+
+    document.getElementById("connectButton").addEventListener("click", async () => {
+      const value = secretInput.value.trim();
+      if (!value) return;
+
+      adminSecret = value;
+
+      try {
+        await apiRequest("", { method: "GET" });
+        sessionStorage.setItem("adminSecret", adminSecret);
+        showAuthenticated();
+        await loadCatalog();
+      } catch (err) {
+        setStatus(err.message, "error");
+      }
+    });
+
+    if (adminSecret) {
+      showAuthenticated();
+      loadCatalog();
+    } else {
+      showLoggedOut();
+    }
+  </script>
+</body>
+</html>
