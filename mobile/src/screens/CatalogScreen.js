@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   StyleSheet,
   Text,
@@ -10,14 +11,18 @@ import {
 } from "react-native";
 
 import * as api from "../api/client";
+import { useAuth } from "../context/AuthContext";
 
 export default function CatalogScreen() {
+  const { token } = useAuth();
   const [query, setQuery] = useState("");
   const [catalog, setCatalog] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedApp, setExpandedApp] = useState(null);
-  const [selectedPlanIds, setSelectedPlanIds] = useState(new Set());
+  // catalog_id -> o kaydın user_subscriptions.id'si (henüz seçilmemişse yok)
+  const [selections, setSelections] = useState({});
+  const [pendingPlanId, setPendingPlanId] = useState(null);
 
   useEffect(() => {
     const searchTerm = query.trim();
@@ -27,6 +32,10 @@ export default function CatalogScreen() {
 
     return () => clearTimeout(timeoutId);
   }, [query]);
+
+  useEffect(() => {
+    fetchMySubscriptions();
+  }, []);
 
   async function fetchCatalog(searchTerm) {
     setLoading(true);
@@ -41,20 +50,44 @@ export default function CatalogScreen() {
     }
   }
 
+  async function fetchMySubscriptions() {
+    try {
+      const data = await api.getUserSubscriptions(token);
+      const next = {};
+      for (const sub of data.subscriptions) {
+        next[sub.catalog_id] = sub.id;
+      }
+      setSelections(next);
+    } catch (err) {
+      // Seçim durumu yüklenemese bile katalog kullanılabilir kalsın.
+    }
+  }
+
   function toggleApp(appName) {
     setExpandedApp((current) => (current === appName ? null : appName));
   }
 
-  function toggleSelectPlan(planId) {
-    setSelectedPlanIds((current) => {
-      const next = new Set(current);
-      if (next.has(planId)) {
-        next.delete(planId);
+  async function toggleSelectPlan(plan) {
+    const existingSubscriptionId = selections[plan.id];
+    setPendingPlanId(plan.id);
+
+    try {
+      if (existingSubscriptionId) {
+        await api.removeUserSubscription(token, existingSubscriptionId);
+        setSelections((current) => {
+          const next = { ...current };
+          delete next[plan.id];
+          return next;
+        });
       } else {
-        next.add(planId);
+        const created = await api.addUserSubscription(token, plan.id);
+        setSelections((current) => ({ ...current, [plan.id]: created.id }));
       }
-      return next;
-    });
+    } catch (err) {
+      Alert.alert("Hata", err.message);
+    } finally {
+      setPendingPlanId(null);
+    }
   }
 
   return (
@@ -91,7 +124,8 @@ export default function CatalogScreen() {
                 {isExpanded && (
                   <View style={styles.plansContainer}>
                     {item.plans.map((plan) => {
-                      const isSelected = selectedPlanIds.has(plan.id);
+                      const isSelected = Boolean(selections[plan.id]);
+                      const isPending = pendingPlanId === plan.id;
 
                       return (
                         <View key={plan.id} style={styles.planRow}>
@@ -104,16 +138,24 @@ export default function CatalogScreen() {
 
                           <TouchableOpacity
                             style={[styles.selectButton, isSelected && styles.selectButtonActive]}
-                            onPress={() => toggleSelectPlan(plan.id)}
+                            onPress={() => toggleSelectPlan(plan)}
+                            disabled={isPending}
                           >
-                            <Text
-                              style={[
-                                styles.selectButtonText,
-                                isSelected && styles.selectButtonTextActive,
-                              ]}
-                            >
-                              {isSelected ? "Seçildi" : "Seç"}
-                            </Text>
+                            {isPending ? (
+                              <ActivityIndicator
+                                size="small"
+                                color={isSelected ? "#fff" : "#2563eb"}
+                              />
+                            ) : (
+                              <Text
+                                style={[
+                                  styles.selectButtonText,
+                                  isSelected && styles.selectButtonTextActive,
+                                ]}
+                              >
+                                {isSelected ? "Kaldır" : "Seç"}
+                              </Text>
+                            )}
                           </TouchableOpacity>
                         </View>
                       );

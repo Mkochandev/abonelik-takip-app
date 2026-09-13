@@ -98,3 +98,19 @@ export function getCatalog() {
 export function searchCatalog(query) {
   return request(`/catalog/search?q=${encodeURIComponent(query)}`);
 }
+
+export function getUserSubscriptions(token) {
+  return request("/user/subscriptions", { token });
+}
+
+export function addUserSubscription(token, catalogId) {
+  return request("/user/subscriptions", {
+    method: "POST",
+    token,
+    body: { catalog_id: catalogId },
+  });
+}
+
+export function removeUserSubscription(token, id) {
+  return request(`/user/subscriptions/${id}`, { method: "DELETE", token });
+}
