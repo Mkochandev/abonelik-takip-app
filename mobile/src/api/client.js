@@ -90,3 +90,11 @@ export function logout(token) {
 export function me(token) {
   return request("/auth/me", { method: "GET", token });
 }
+
+export function getCatalog() {
+  return request("/catalog");
+}
+
+export function searchCatalog(query) {
+  return request(`/catalog/search?q=${encodeURIComponent(query)}`);
+}
