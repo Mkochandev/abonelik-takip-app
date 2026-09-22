@@ -12,6 +12,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import * as api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../theme";
+import { formatSubscriptionPrice } from "../utils/price";
 
 function getNextBillingInfo(billingDate) {
   const today = new Date();
@@ -71,12 +72,10 @@ export default function HomeScreen({ navigation }) {
     }, [token])
   );
 
-  const totalsByCurrency = subscriptions.reduce((totals, sub) => {
-    const amount = Number(sub.current_price);
-    totals[sub.currency] = (totals[sub.currency] || 0) + amount;
-    return totals;
-  }, {});
-  const totalEntries = Object.entries(totalsByCurrency);
+  const totalTry = subscriptions.reduce(
+    (sum, sub) => sum + Number(sub.current_price_try ?? sub.current_price),
+    0
+  );
 
   const upcomingPayments = subscriptions
     .filter((sub) => sub.billing_date)
@@ -86,7 +85,7 @@ export default function HomeScreen({ navigation }) {
 
   const categoryTotals = subscriptions.reduce((totals, sub) => {
     const key = sub.category || "Diğer";
-    totals[key] = (totals[key] || 0) + Number(sub.current_price);
+    totals[key] = (totals[key] || 0) + Number(sub.current_price_try ?? sub.current_price);
     return totals;
   }, {});
   const categoryEntries = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
@@ -98,15 +97,7 @@ export default function HomeScreen({ navigation }) {
 
       <View style={styles.totalCard}>
         <Text style={styles.totalLabel}>Toplam Aylık Gider</Text>
-        {totalEntries.length > 0 ? (
-          totalEntries.map(([currency, total]) => (
-            <Text key={currency} style={styles.totalValue}>
-              {total.toFixed(2)} {currency}
-            </Text>
-          ))
-        ) : (
-          <Text style={styles.totalValue}>0.00</Text>
-        )}
+        <Text style={styles.totalValue}>{totalTry.toFixed(2)} ₺</Text>
       </View>
 
       {upcomingPayments.length > 0 && (
@@ -171,9 +162,7 @@ export default function HomeScreen({ navigation }) {
                 {item.plan_name ? <Text style={styles.subPlan}>{item.plan_name}</Text> : null}
                 {item.reason ? <Text style={styles.subReason}>{item.reason}</Text> : null}
               </View>
-              <Text style={styles.subPrice}>
-                {item.current_price} {item.currency}
-              </Text>
+              <Text style={styles.subPrice}>{formatSubscriptionPrice(item)}</Text>
             </TouchableOpacity>
           ))
         )}

@@ -14,6 +14,7 @@ import {
 import * as api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../theme";
+import { formatSubscriptionPrice } from "../utils/price";
 
 export default function SubscriptionDetailScreen({ navigation, route }) {
   const { subscription } = route.params;
@@ -88,9 +89,7 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
         <Text style={styles.appName}>{subscription.app_name}</Text>
         {subscription.plan_name ? <Text style={styles.planName}>{subscription.plan_name}</Text> : null}
 
-        <Text style={styles.price}>
-          {subscription.current_price} {subscription.currency}
-        </Text>
+        <Text style={styles.price}>{formatSubscriptionPrice(subscription)}</Text>
 
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>Kullanım sıklığı</Text>

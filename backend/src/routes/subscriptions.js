@@ -2,6 +2,7 @@ const express = require("express");
 
 const db = require("../config/db");
 const requireAuth = require("../middleware/requireAuth");
+const { getUsdToTryRate } = require("../services/exchangeRate");
 
 const router = express.Router();
 
@@ -67,7 +68,17 @@ router.get("/", async (req, res) => {
       [req.user.id]
     );
 
-    res.json({ subscriptions: rows });
+    const usdToTryRate = await getUsdToTryRate();
+
+    const subscriptions = rows.map((row) => ({
+      ...row,
+      current_price_try:
+        row.currency === "USD"
+          ? Number((Number(row.current_price) * usdToTryRate).toFixed(2))
+          : Number(row.current_price),
+    }));
+
+    res.json({ subscriptions });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
