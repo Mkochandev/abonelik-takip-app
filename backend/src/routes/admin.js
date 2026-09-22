@@ -22,7 +22,7 @@ router.get("/", async (req, res) => {
 
 // POST /api/admin/catalog — yeni app/plan ekle
 router.post("/", async (req, res) => {
-  const { app_name, plan_name, current_price, currency, source_url } = req.body;
+  const { app_name, plan_name, current_price, currency, source_url, category } = req.body;
 
   if (!app_name || current_price === undefined || current_price === null) {
     return res.status(400).json({ error: "app_name ve current_price zorunludur" });
@@ -30,23 +30,27 @@ router.post("/", async (req, res) => {
 
   try {
     const { rows } = await db.query(
-      `insert into subscriptions_catalog (app_name, plan_name, current_price, currency, source_url)
-       values ($1, $2, $3, coalesce($4, 'TRY'), $5)
+      `insert into subscriptions_catalog (app_name, plan_name, current_price, currency, source_url, category)
+       values ($1, $2, $3, coalesce($4, 'TRY'), $5, $6)
        returning *`,
-      [app_name, plan_name || null, current_price, currency || null, source_url || null]
+      [app_name, plan_name || null, current_price, currency || null, source_url || null, category || null]
     );
 
     res.status(201).json(rows[0]);
   } catch (error) {
+    if (error.code === "23514") {
+      return res.status(400).json({ error: "Geçersiz category değeri" });
+    }
+
     res.status(500).json({ error: error.message });
   }
 });
 
 // PUT /api/admin/catalog/:id — mevcut bir kaydı güncelle (gönderilmeyen alanlar korunur)
 router.put("/:id", async (req, res) => {
-  const { app_name, plan_name, current_price, currency, source_url, last_checked_at } = req.body;
+  const { app_name, plan_name, current_price, currency, source_url, last_checked_at, category } = req.body;
 
-  const params = [app_name, plan_name, current_price, currency, source_url, last_checked_at].map(
+  const params = [app_name, plan_name, current_price, currency, source_url, last_checked_at, category].map(
     (value) => (value === undefined ? null : value)
   );
 
@@ -58,8 +62,9 @@ router.put("/:id", async (req, res) => {
            current_price = coalesce($3, current_price),
            currency = coalesce($4, currency),
            source_url = coalesce($5, source_url),
-           last_checked_at = coalesce($6, last_checked_at)
-       where id = $7
+           last_checked_at = coalesce($6, last_checked_at),
+           category = coalesce($7, category)
+       where id = $8
        returning *`,
       [...params, req.params.id]
     );
@@ -72,6 +77,10 @@ router.put("/:id", async (req, res) => {
   } catch (error) {
     if (error.code === "22P02") {
       return res.status(400).json({ error: "Geçersiz id formatı" });
+    }
+
+    if (error.code === "23514") {
+      return res.status(400).json({ error: "Geçersiz category değeri" });
     }
 
     res.status(500).json({ error: error.message });

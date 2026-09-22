@@ -116,6 +116,7 @@
       <input id="newPlanName" placeholder="plan_name" />
       <input id="newPrice" type="number" step="0.01" placeholder="current_price" required />
       <input id="newCurrency" placeholder="currency (örn. TRY)" />
+      <select id="newCategory"></select>
       <input id="newSourceUrl" placeholder="source_url" />
       <button type="submit">Ekle</button>
     </form>
@@ -128,6 +129,7 @@
           <th>plan_name</th>
           <th>current_price</th>
           <th>currency</th>
+          <th>category</th>
           <th>last_checked_at</th>
           <th></th>
         </tr>
@@ -140,9 +142,30 @@
 
   <script>
     const API_BASE = "/api/admin/catalog";
+    const CATEGORIES = [
+      "Video/Dizi-Film",
+      "Müzik",
+      "Kitap/Sesli Kitap",
+      "Yapay Zeka",
+      "Bulut Depolama",
+      "Üretkenlik/Tasarım",
+      "Spor",
+    ];
     let adminSecret = sessionStorage.getItem("adminSecret") || "";
     let catalogCache = [];
     let editingId = null;
+
+    function categoryOptionsHtml(selected) {
+      const emptyOption = `<option value="" ${!selected ? "selected" : ""}>—</option>`;
+      const options = CATEGORIES.map(
+        (category) =>
+          `<option value="${category}" ${category === selected ? "selected" : ""}>${category}</option>`
+      ).join("");
+
+      return emptyOption + options;
+    }
+
+    document.getElementById("newCategory").innerHTML = categoryOptionsHtml(null);
 
     const authSection = document.getElementById("authSection");
     const mainSection = document.getElementById("mainSection");
@@ -224,11 +247,16 @@
           : `<button data-action="edit" data-id="${item.id}">Düzenle</button>
              <button class="danger" data-action="delete" data-id="${item.id}">Sil</button>`;
 
+        const categoryCell = isEditing
+          ? `<select id="editCategoryInput">${categoryOptionsHtml(item.category)}</select>`
+          : escapeHtml(item.category || "—");
+
         row.innerHTML = `
           <td>${escapeHtml(item.app_name)}</td>
           <td>${escapeHtml(item.plan_name || "")}</td>
           <td>${priceCell} ${!isEditing ? escapeHtml(item.currency) : ""}</td>
           <td>${escapeHtml(item.currency)}</td>
+          <td>${categoryCell}</td>
           <td>${item.last_checked_at ? new Date(item.last_checked_at).toLocaleString("tr-TR") : "—"}</td>
           <td class="actions">${actionsCell}</td>
         `;
@@ -271,13 +299,13 @@
           setStatus(err.message, "error");
         }
       } else if (action === "save") {
-        const input = document.getElementById("editPriceInput");
-        const newPrice = input.value;
+        const newPrice = document.getElementById("editPriceInput").value;
+        const newCategory = document.getElementById("editCategoryInput").value;
 
         try {
           await apiRequest(`/${id}`, {
             method: "PUT",
-            body: JSON.stringify({ current_price: newPrice }),
+            body: JSON.stringify({ current_price: newPrice, category: newCategory || null }),
           });
           editingId = null;
           setStatus("Fiyat güncellendi.", "ok");
@@ -296,12 +324,14 @@
         plan_name: document.getElementById("newPlanName").value.trim() || undefined,
         current_price: document.getElementById("newPrice").value,
         currency: document.getElementById("newCurrency").value.trim() || undefined,
+        category: document.getElementById("newCategory").value || undefined,
         source_url: document.getElementById("newSourceUrl").value.trim() || undefined,
       };
 
       try {
         await apiRequest("", { method: "POST", body: JSON.stringify(body) });
         newForm.reset();
+        document.getElementById("newCategory").value = "";
         setStatus("Kayıt eklendi.", "ok");
         await loadCatalog();
       } catch (err) {

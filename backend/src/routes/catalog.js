@@ -17,6 +17,7 @@ function groupByAppName(rows) {
       plan_name: row.plan_name,
       current_price: row.current_price,
       currency: row.currency,
+      category: row.category,
       source_url: row.source_url,
       last_checked_at: row.last_checked_at,
     });
@@ -26,11 +27,19 @@ function groupByAppName(rows) {
 }
 
 // GET /api/catalog — tüm katalog, app_name'e göre gruplanmış
+// ?category=... verilirse yalnızca o kategorideki kayıtlar döner.
 router.get("/", async (req, res) => {
+  const { category } = req.query;
+
   try {
-    const { rows } = await db.query(
-      "select * from subscriptions_catalog order by app_name, plan_name"
-    );
+    const { rows } = category
+      ? await db.query(
+          "select * from subscriptions_catalog where category = $1 order by app_name, plan_name",
+          [category]
+        )
+      : await db.query(
+          "select * from subscriptions_catalog order by app_name, plan_name"
+        );
 
     res.json({ catalog: groupByAppName(rows) });
   } catch (error) {
@@ -42,16 +51,24 @@ router.get("/", async (req, res) => {
 // /:id ile çakışmaması için /:id route'undan ÖNCE tanımlanmalı.
 router.get("/search", async (req, res) => {
   const q = (req.query.q || "").trim();
+  const { category } = req.query;
 
   if (!q) {
     return res.status(400).json({ error: "q parametresi zorunludur" });
   }
 
   try {
-    const { rows } = await db.query(
-      "select * from subscriptions_catalog where app_name ilike $1 order by app_name, plan_name",
-      [`%${q}%`]
-    );
+    const params = [`%${q}%`];
+    let sql = "select * from subscriptions_catalog where app_name ilike $1";
+
+    if (category) {
+      params.push(category);
+      sql += ` and category = $${params.length}`;
+    }
+
+    sql += " order by app_name, plan_name";
+
+    const { rows } = await db.query(sql, params);
 
     res.json({ catalog: groupByAppName(rows) });
   } catch (error) {

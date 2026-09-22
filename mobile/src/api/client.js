@@ -91,12 +91,17 @@ export function me(token) {
   return request("/auth/me", { method: "GET", token });
 }
 
-export function getCatalog() {
-  return request("/catalog");
+export function getCatalog(category) {
+  const params = category ? `?category=${encodeURIComponent(category)}` : "";
+  return request(`/catalog${params}`);
 }
 
-export function searchCatalog(query) {
-  return request(`/catalog/search?q=${encodeURIComponent(query)}`);
+export function searchCatalog(query, category) {
+  const params = new URLSearchParams({ q: query });
+  if (category) {
+    params.set("category", category);
+  }
+  return request(`/catalog/search?${params.toString()}`);
 }
 
 export function getUserSubscriptions(token) {

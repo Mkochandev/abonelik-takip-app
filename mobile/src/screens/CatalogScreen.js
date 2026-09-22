@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -13,9 +14,20 @@ import {
 import * as api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 
+const CATEGORIES = [
+  "Video/Dizi-Film",
+  "Müzik",
+  "Kitap/Sesli Kitap",
+  "Yapay Zeka",
+  "Bulut Depolama",
+  "Üretkenlik/Tasarım",
+  "Spor",
+];
+
 export default function CatalogScreen() {
   const { token } = useAuth();
   const [query, setQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState(null);
   const [catalog, setCatalog] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -31,7 +43,7 @@ export default function CatalogScreen() {
     }, 300);
 
     return () => clearTimeout(timeoutId);
-  }, [query]);
+  }, [query, selectedCategory]);
 
   useEffect(() => {
     fetchMySubscriptions();
@@ -41,7 +53,9 @@ export default function CatalogScreen() {
     setLoading(true);
     setError(null);
     try {
-      const data = searchTerm ? await api.searchCatalog(searchTerm) : await api.getCatalog();
+      const data = searchTerm
+        ? await api.searchCatalog(searchTerm, selectedCategory)
+        : await api.getCatalog(selectedCategory);
       setCatalog(data.catalog);
     } catch (err) {
       setError(err.message);
@@ -101,6 +115,35 @@ export default function CatalogScreen() {
         value={query}
         onChangeText={setQuery}
       />
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chipsContainer}
+      >
+        <TouchableOpacity
+          style={[styles.chip, selectedCategory === null && styles.chipActive]}
+          onPress={() => setSelectedCategory(null)}
+        >
+          <Text style={[styles.chipText, selectedCategory === null && styles.chipTextActive]}>
+            Tümü
+          </Text>
+        </TouchableOpacity>
+
+        {CATEGORIES.map((category) => {
+          const isActive = selectedCategory === category;
+
+          return (
+            <TouchableOpacity
+              key={category}
+              style={[styles.chip, isActive && styles.chipActive]}
+              onPress={() => setSelectedCategory(category)}
+            >
+              <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{category}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
 
       {loading ? (
         <ActivityIndicator style={styles.loading} size="large" />
@@ -189,6 +232,30 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
     marginBottom: 16,
+  },
+  chipsContainer: {
+    gap: 8,
+    paddingBottom: 16,
+  },
+  chip: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    backgroundColor: "#fff",
+  },
+  chipActive: {
+    backgroundColor: "#2563eb",
+    borderColor: "#2563eb",
+  },
+  chipText: {
+    fontSize: 13,
+    color: "#444",
+    fontWeight: "500",
+  },
+  chipTextActive: {
+    color: "#fff",
   },
   loading: {
     marginTop: 32,
