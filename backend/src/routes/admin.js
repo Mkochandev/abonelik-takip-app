@@ -2,10 +2,23 @@ const express = require("express");
 
 const db = require("../config/db");
 const requireAdminSecret = require("../middleware/requireAdminSecret");
+const { scanAllPrices } = require("../services/priceScanner");
 
 const router = express.Router();
 
 router.use(requireAdminSecret);
+
+// POST /api/admin/catalog/scan-prices — tüm kataloğu tarayıp fiyatları
+// Anthropic API'si ile güncel siteden çıkarmaya çalışır. Senkron çalışır
+// (31 kayıt için kabul edilebilir sürede biter) ve özet döner.
+router.post("/scan-prices", async (req, res) => {
+  try {
+    const summary = await scanAllPrices();
+    res.json(summary);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // GET /api/admin/catalog — tüm katalog, düz liste (admin panel için)
 router.get("/", async (req, res) => {

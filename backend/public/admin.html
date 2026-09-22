@@ -99,6 +99,16 @@
   .price-input {
     width: 90px;
   }
+  #scanSection {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+  }
+  #scanStatus {
+    font-size: 14px;
+    color: #555;
+  }
 </style>
 </head>
 <body>
@@ -110,6 +120,11 @@
   </div>
 
   <div id="mainSection">
+    <div id="scanSection">
+      <button id="scanButton">Fiyatları Tara</button>
+      <span id="scanStatus"></span>
+    </div>
+
     <h2>Yeni Ekle</h2>
     <form id="newForm">
       <input id="newAppName" placeholder="app_name" required />
@@ -351,6 +366,27 @@
         await loadCatalog();
       } catch (err) {
         setStatus(err.message, "error");
+      }
+    });
+
+    const scanButton = document.getElementById("scanButton");
+    const scanStatusEl = document.getElementById("scanStatus");
+
+    scanButton.addEventListener("click", async () => {
+      scanButton.disabled = true;
+      scanStatusEl.textContent = "Taranıyor... (birkaç dakika sürebilir)";
+
+      try {
+        const summary = await apiRequest("/scan-prices", { method: "POST" });
+        scanStatusEl.textContent =
+          `Tarama bitti: ${summary.total} kayıt, ${summary.updated} güncellendi, ` +
+          `${summary.unchanged} değişmedi, ${summary.failed} başarısız.`;
+        await loadCatalog();
+      } catch (err) {
+        scanStatusEl.textContent = "";
+        setStatus(err.message, "error");
+      } finally {
+        scanButton.disabled = false;
       }
     });
 
