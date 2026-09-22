@@ -22,7 +22,7 @@ router.get("/", async (req, res) => {
 
 // POST /api/admin/catalog — yeni app/plan ekle
 router.post("/", async (req, res) => {
-  const { app_name, plan_name, current_price, currency, source_url, category } = req.body;
+  const { app_name, plan_name, current_price, currency, source_url, category, cancel_url } = req.body;
 
   if (!app_name || current_price === undefined || current_price === null) {
     return res.status(400).json({ error: "app_name ve current_price zorunludur" });
@@ -30,10 +30,19 @@ router.post("/", async (req, res) => {
 
   try {
     const { rows } = await db.query(
-      `insert into subscriptions_catalog (app_name, plan_name, current_price, currency, source_url, category)
-       values ($1, $2, $3, coalesce($4, 'TRY'), $5, $6)
+      `insert into subscriptions_catalog
+         (app_name, plan_name, current_price, currency, source_url, category, cancel_url)
+       values ($1, $2, $3, coalesce($4, 'TRY'), $5, $6, $7)
        returning *`,
-      [app_name, plan_name || null, current_price, currency || null, source_url || null, category || null]
+      [
+        app_name,
+        plan_name || null,
+        current_price,
+        currency || null,
+        source_url || null,
+        category || null,
+        cancel_url || null,
+      ]
     );
 
     res.status(201).json(rows[0]);
@@ -48,11 +57,27 @@ router.post("/", async (req, res) => {
 
 // PUT /api/admin/catalog/:id — mevcut bir kaydı güncelle (gönderilmeyen alanlar korunur)
 router.put("/:id", async (req, res) => {
-  const { app_name, plan_name, current_price, currency, source_url, last_checked_at, category } = req.body;
+  const {
+    app_name,
+    plan_name,
+    current_price,
+    currency,
+    source_url,
+    last_checked_at,
+    category,
+    cancel_url,
+  } = req.body;
 
-  const params = [app_name, plan_name, current_price, currency, source_url, last_checked_at, category].map(
-    (value) => (value === undefined ? null : value)
-  );
+  const params = [
+    app_name,
+    plan_name,
+    current_price,
+    currency,
+    source_url,
+    last_checked_at,
+    category,
+    cancel_url,
+  ].map((value) => (value === undefined ? null : value));
 
   try {
     const { rows } = await db.query(
@@ -63,8 +88,9 @@ router.put("/:id", async (req, res) => {
            currency = coalesce($4, currency),
            source_url = coalesce($5, source_url),
            last_checked_at = coalesce($6, last_checked_at),
-           category = coalesce($7, category)
-       where id = $8
+           category = coalesce($7, category),
+           cancel_url = coalesce($8, cancel_url)
+       where id = $9
        returning *`,
       [...params, req.params.id]
     );

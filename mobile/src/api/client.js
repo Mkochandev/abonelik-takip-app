@@ -104,15 +104,27 @@ export function searchCatalog(query, category) {
   return request(`/catalog/search?${params.toString()}`);
 }
 
+export function getCatalogItem(id) {
+  return request(`/catalog/${id}`);
+}
+
 export function getUserSubscriptions(token) {
   return request("/user/subscriptions", { token });
 }
 
-export function addUserSubscription(token, catalogId) {
+export function addUserSubscription(token, catalogId, details = {}) {
   return request("/user/subscriptions", {
     method: "POST",
     token,
-    body: { catalog_id: catalogId },
+    body: { catalog_id: catalogId, ...details },
+  });
+}
+
+export function updateUserSubscription(token, id, updates) {
+  return request(`/user/subscriptions/${id}`, {
+    method: "PATCH",
+    token,
+    body: updates,
   });
 }
 

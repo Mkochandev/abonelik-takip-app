@@ -7,6 +7,7 @@ import CatalogScreen from './src/screens/CatalogScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
+import SubscriptionDetailScreen from './src/screens/SubscriptionDetailScreen';
 import { useTheme } from './src/theme';
 
 const Stack = createNativeStackNavigator();
@@ -20,6 +21,7 @@ function RootNavigator() {
         <>
           <Stack.Screen name="Home" component={HomeScreen} />
           <Stack.Screen name="Catalog" component={CatalogScreen} />
+          <Stack.Screen name="SubscriptionDetail" component={SubscriptionDetailScreen} />
         </>
       ) : (
         <>

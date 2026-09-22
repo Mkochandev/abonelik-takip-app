@@ -118,6 +118,7 @@
       <input id="newCurrency" placeholder="currency (örn. TRY)" />
       <select id="newCategory"></select>
       <input id="newSourceUrl" placeholder="source_url" />
+      <input id="newCancelUrl" placeholder="İptal URL" />
       <button type="submit">Ekle</button>
     </form>
 
@@ -130,6 +131,7 @@
           <th>current_price</th>
           <th>currency</th>
           <th>category</th>
+          <th>İptal URL</th>
           <th>last_checked_at</th>
           <th></th>
         </tr>
@@ -251,12 +253,19 @@
           ? `<select id="editCategoryInput">${categoryOptionsHtml(item.category)}</select>`
           : escapeHtml(item.category || "—");
 
+        const cancelUrlCell = isEditing
+          ? `<input id="editCancelUrlInput" placeholder="İptal URL" value="${escapeHtml(item.cancel_url || "")}" />`
+          : item.cancel_url
+          ? `<a href="${escapeHtml(item.cancel_url)}" target="_blank" rel="noopener">link</a>`
+          : "—";
+
         row.innerHTML = `
           <td>${escapeHtml(item.app_name)}</td>
           <td>${escapeHtml(item.plan_name || "")}</td>
           <td>${priceCell} ${!isEditing ? escapeHtml(item.currency) : ""}</td>
           <td>${escapeHtml(item.currency)}</td>
           <td>${categoryCell}</td>
+          <td>${cancelUrlCell}</td>
           <td>${item.last_checked_at ? new Date(item.last_checked_at).toLocaleString("tr-TR") : "—"}</td>
           <td class="actions">${actionsCell}</td>
         `;
@@ -301,11 +310,16 @@
       } else if (action === "save") {
         const newPrice = document.getElementById("editPriceInput").value;
         const newCategory = document.getElementById("editCategoryInput").value;
+        const newCancelUrl = document.getElementById("editCancelUrlInput").value.trim();
 
         try {
           await apiRequest(`/${id}`, {
             method: "PUT",
-            body: JSON.stringify({ current_price: newPrice, category: newCategory || null }),
+            body: JSON.stringify({
+              current_price: newPrice,
+              category: newCategory || null,
+              cancel_url: newCancelUrl || null,
+            }),
           });
           editingId = null;
           setStatus("Fiyat güncellendi.", "ok");
@@ -326,6 +340,7 @@
         currency: document.getElementById("newCurrency").value.trim() || undefined,
         category: document.getElementById("newCategory").value || undefined,
         source_url: document.getElementById("newSourceUrl").value.trim() || undefined,
+        cancel_url: document.getElementById("newCancelUrl").value.trim() || undefined,
       };
 
       try {

@@ -3,8 +3,10 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Modal,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -25,6 +27,31 @@ const CATEGORIES = [
   "Spor",
 ];
 
+const REASON_OPTIONS = {
+  "Video/Dizi-Film": [
+    "Belirli bir dizi/film için",
+    "Genel eğlence takibi",
+    "Aile/ev arkadaşıyla ortak",
+    "Spor/belgesel içerikleri",
+  ],
+  Müzik: ["Günlük müzik dinleme", "Playlist/podcast takibi", "Reklamsız dinleme", "Offline indirme"],
+  "Kitap/Sesli Kitap": [
+    "Belirli bir kitap/seri için",
+    "Düzenli okuma alışkanlığı",
+    "Yolda/işte dinleme",
+  ],
+  "Yapay Zeka": ["İş/proje için", "Kod yazarken yardım", "Öğrenme/araştırma", "Kişisel kullanım"],
+  "Bulut Depolama": [
+    "Fotoğraf/video yedekleme",
+    "Cihazlar arası senkronizasyon",
+    "İş dosyaları için",
+  ],
+  "Üretkenlik/Tasarım": ["İş projeleri için", "Freelance/müşteri işleri", "Kişisel hobi", "Okul/eğitim"],
+  Spor: ["Maç takibi", "Belirli bir takım/lig için", "Genel spor içerikleri"],
+};
+
+const USAGE_FREQUENCIES = ["Her gün", "Haftada birkaç", "Nadiren"];
+
 export default function CatalogScreen() {
   const { token } = useAuth();
   const theme = useTheme();
@@ -38,6 +65,12 @@ export default function CatalogScreen() {
   // catalog_id -> o kaydın user_subscriptions.id'si (henüz seçilmemişse yok)
   const [selections, setSelections] = useState({});
   const [pendingPlanId, setPendingPlanId] = useState(null);
+  const [reasonPlan, setReasonPlan] = useState(null);
+  const [selectedChip, setSelectedChip] = useState(null);
+  const [reasonText, setReasonText] = useState("");
+  const [usageFrequency, setUsageFrequency] = useState(null);
+  const [billingDate, setBillingDate] = useState("");
+  const [priceAlertEnabled, setPriceAlertEnabled] = useState(true);
 
   useEffect(() => {
     const searchTerm = query.trim();
@@ -84,28 +117,116 @@ export default function CatalogScreen() {
     setExpandedApp((current) => (current === appName ? null : appName));
   }
 
-  async function toggleSelectPlan(plan) {
+  function handleSelectPress(plan) {
     const existingSubscriptionId = selections[plan.id];
-    setPendingPlanId(plan.id);
 
+    if (existingSubscriptionId) {
+      removePlan(plan, existingSubscriptionId);
+    } else {
+      setReasonPlan(plan);
+      setSelectedChip(null);
+      setReasonText("");
+      setUsageFrequency(null);
+      setBillingDate("");
+      setPriceAlertEnabled(true);
+    }
+  }
+
+  async function removePlan(plan, subscriptionId) {
+    setPendingPlanId(plan.id);
     try {
-      if (existingSubscriptionId) {
-        await api.removeUserSubscription(token, existingSubscriptionId);
-        setSelections((current) => {
-          const next = { ...current };
-          delete next[plan.id];
-          return next;
-        });
-      } else {
-        const created = await api.addUserSubscription(token, plan.id);
-        setSelections((current) => ({ ...current, [plan.id]: created.id }));
-      }
+      await api.removeUserSubscription(token, subscriptionId);
+      setSelections((current) => {
+        const next = { ...current };
+        delete next[plan.id];
+        return next;
+      });
     } catch (err) {
       Alert.alert("Hata", err.message);
     } finally {
       setPendingPlanId(null);
     }
   }
+
+  async function submitPlan(plan, details) {
+    setReasonPlan(null);
+    setPendingPlanId(plan.id);
+
+    try {
+      const created = await api.addUserSubscription(token, plan.id, details);
+      setSelections((current) => ({ ...current, [plan.id]: created.id }));
+    } catch (err) {
+      Alert.alert("Hata", err.message);
+    } finally {
+      setPendingPlanId(null);
+    }
+  }
+
+  function handleSave() {
+    const plan = reasonPlan;
+    if (!plan) {
+      return;
+    }
+
+    const trimmedBillingDate = billingDate.trim();
+    let parsedBillingDate = null;
+
+    if (trimmedBillingDate) {
+      parsedBillingDate = Number(trimmedBillingDate);
+      if (!Number.isInteger(parsedBillingDate) || parsedBillingDate < 1 || parsedBillingDate > 31) {
+        Alert.alert("Hata", "Fatura günü 1 ile 31 arasında olmalı");
+        return;
+      }
+    }
+
+    submitPlan(plan, {
+      reason: reasonText.trim() || null,
+      usage_frequency: usageFrequency,
+      billing_date: parsedBillingDate,
+      price_alert_enabled: priceAlertEnabled,
+    });
+  }
+
+  function handleSkip() {
+    const plan = reasonPlan;
+    if (!plan) {
+      return;
+    }
+
+    submitPlan(plan, {
+      reason: null,
+      usage_frequency: null,
+      billing_date: null,
+      price_alert_enabled: true,
+    });
+  }
+
+  function handleChipPress(label) {
+    if (selectedChip === label) {
+      setSelectedChip(null);
+      setReasonText((current) => (current === label ? "" : current));
+    } else {
+      setSelectedChip(label);
+      setReasonText(label);
+    }
+  }
+
+  function handleReasonTextChange(text) {
+    setReasonText(text);
+    if (selectedChip && text !== selectedChip) {
+      setSelectedChip(null);
+    }
+  }
+
+  function handleUsageFrequencyPress(label) {
+    setUsageFrequency((current) => (current === label ? null : label));
+  }
+
+  function handleBillingDateChange(text) {
+    setBillingDate(text.replace(/[^0-9]/g, "").slice(0, 2));
+  }
+
+  const reasonOptions = reasonPlan ? REASON_OPTIONS[reasonPlan.category] || [] : [];
 
   return (
     <View style={styles.container}>
@@ -189,7 +310,7 @@ export default function CatalogScreen() {
 
                           <TouchableOpacity
                             style={[styles.selectButton, isSelected && styles.selectButtonActive]}
-                            onPress={() => toggleSelectPlan(plan)}
+                            onPress={() => handleSelectPress(plan)}
                             disabled={isPending}
                           >
                             {isPending ? (
@@ -204,7 +325,7 @@ export default function CatalogScreen() {
                                   isSelected && styles.selectButtonTextActive,
                                 ]}
                               >
-                                {isSelected ? "Kaldır" : "Seç"}
+                                {isSelected ? "Seçildi ✓" : "Seç"}
                               </Text>
                             )}
                           </TouchableOpacity>
@@ -218,6 +339,94 @@ export default function CatalogScreen() {
           }}
         />
       )}
+
+      <Modal
+        visible={reasonPlan !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setReasonPlan(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Bu aboneliğe neden sahipsin?</Text>
+            <Text style={styles.modalSubtitle}>İsteğe bağlı</Text>
+
+            <ScrollView style={styles.modalScroll}>
+              <View style={styles.modalChips}>
+                {reasonOptions.map((label) => {
+                  const isActive = selectedChip === label;
+
+                  return (
+                    <TouchableOpacity
+                      key={label}
+                      style={[styles.modalChip, isActive && styles.chipActive]}
+                      onPress={() => handleChipPress(label)}
+                    >
+                      <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Ya da kendi cevabını yaz..."
+                placeholderTextColor={theme.colors.textSecondary}
+                value={reasonText}
+                onChangeText={handleReasonTextChange}
+                multiline
+              />
+
+              <Text style={styles.modalSectionTitle}>Ne sıklıkla kullanıyorsun?</Text>
+              <View style={styles.modalChips}>
+                {USAGE_FREQUENCIES.map((label) => {
+                  const isActive = usageFrequency === label;
+
+                  return (
+                    <TouchableOpacity
+                      key={label}
+                      style={[styles.modalChip, isActive && styles.chipActive]}
+                      onPress={() => handleUsageFrequencyPress(label)}
+                    >
+                      <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.modalSectionTitle}>Hangi gün ödeme yapılıyor?</Text>
+              <TextInput
+                style={styles.modalDateInput}
+                placeholder="Örn. 15"
+                placeholderTextColor={theme.colors.textSecondary}
+                keyboardType="number-pad"
+                value={billingDate}
+                onChangeText={handleBillingDateChange}
+              />
+
+              <View style={styles.modalSwitchRow}>
+                <Text style={styles.modalSwitchLabel}>Zam olursa haber ver</Text>
+                <Switch
+                  value={priceAlertEnabled}
+                  onValueChange={setPriceAlertEnabled}
+                  trackColor={{ false: theme.colors.border, true: theme.colors.accent }}
+                  thumbColor={theme.colors.background}
+                />
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalSkipButton} onPress={handleSkip}>
+                <Text style={styles.modalSkipButtonText}>Geç</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.modalSaveButton} onPress={handleSave}>
+                <Text style={styles.modalSaveButtonText}>Kaydet</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -349,6 +558,111 @@ function createStyles(theme) {
     },
     selectButtonTextActive: {
       color: colors.accentText,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0, 0, 0, 0.5)",
+      justifyContent: "center",
+      padding: spacing.lg,
+    },
+    modalCard: {
+      backgroundColor: colors.background,
+      borderRadius: radius,
+      padding: spacing.lg,
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    modalSubtitle: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      marginTop: spacing.xs,
+      marginBottom: spacing.md,
+    },
+    modalScroll: {
+      maxHeight: 420,
+    },
+    modalSectionTitle: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.text,
+      marginBottom: spacing.sm,
+    },
+    modalChips: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: spacing.sm,
+      marginBottom: spacing.md,
+    },
+    modalChip: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius,
+      paddingVertical: spacing.xs + 2,
+      paddingHorizontal: spacing.md - 2,
+      backgroundColor: colors.background,
+    },
+    modalInput: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius,
+      padding: spacing.sm + 4,
+      fontSize: 15,
+      color: colors.text,
+      minHeight: 44,
+      textAlignVertical: "top",
+      marginBottom: spacing.lg,
+    },
+    modalDateInput: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius,
+      padding: spacing.sm + 4,
+      fontSize: 15,
+      color: colors.text,
+      width: 80,
+      marginBottom: spacing.lg,
+    },
+    modalSwitchRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: spacing.md,
+    },
+    modalSwitchLabel: {
+      fontSize: 15,
+      color: colors.text,
+      fontWeight: "500",
+    },
+    modalActions: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: spacing.sm,
+    },
+    modalSkipButton: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius,
+      paddingVertical: spacing.sm + 2,
+      paddingHorizontal: spacing.md,
+    },
+    modalSkipButtonText: {
+      color: colors.text,
+      fontWeight: "600",
+      fontSize: 14,
+    },
+    modalSaveButton: {
+      backgroundColor: colors.accent,
+      borderRadius: radius,
+      paddingVertical: spacing.sm + 2,
+      paddingHorizontal: spacing.md,
+    },
+    modalSaveButtonText: {
+      color: colors.accentText,
+      fontWeight: "600",
+      fontSize: 14,
     },
   });
 }
