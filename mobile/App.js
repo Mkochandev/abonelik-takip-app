@@ -1,4 +1,4 @@
-import { NavigationContainer } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 
@@ -7,6 +7,7 @@ import CatalogScreen from './src/screens/CatalogScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
+import { useTheme } from './src/theme';
 
 const Stack = createNativeStackNavigator();
 
@@ -30,13 +31,32 @@ function RootNavigator() {
   );
 }
 
+function ThemedNavigationContainer() {
+  const { colors, isDark } = useTheme();
+  const navigationTheme = {
+    ...(isDark ? DarkTheme : DefaultTheme),
+    colors: {
+      ...(isDark ? DarkTheme.colors : DefaultTheme.colors),
+      background: colors.background,
+      card: colors.background,
+      text: colors.text,
+      border: colors.border,
+      primary: colors.accent,
+    },
+  };
+
+  return (
+    <NavigationContainer theme={navigationTheme}>
+      <RootNavigator />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+    </NavigationContainer>
+  );
+}
+
 export default function App() {
   return (
     <AuthProvider>
-      <NavigationContainer>
-        <RootNavigator />
-        <StatusBar style="auto" />
-      </NavigationContainer>
+      <ThemedNavigationContainer />
     </AuthProvider>
   );
 }

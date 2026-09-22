@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +13,7 @@ import {
 
 import * as api from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../theme";
 
 const CATEGORIES = [
   "Video/Dizi-Film",
@@ -26,6 +27,8 @@ const CATEGORIES = [
 
 export default function CatalogScreen() {
   const { token } = useAuth();
+  const theme = useTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [query, setQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [catalog, setCatalog] = useState([]);
@@ -111,6 +114,7 @@ export default function CatalogScreen() {
       <TextInput
         style={styles.searchInput}
         placeholder="Uygulama ara..."
+        placeholderTextColor={theme.colors.textSecondary}
         autoCapitalize="none"
         value={query}
         onChangeText={setQuery}
@@ -146,7 +150,7 @@ export default function CatalogScreen() {
       </ScrollView>
 
       {loading ? (
-        <ActivityIndicator style={styles.loading} size="large" />
+        <ActivityIndicator style={styles.loading} size="large" color={theme.colors.accent} />
       ) : error ? (
         <Text style={styles.error}>{error}</Text>
       ) : (
@@ -160,8 +164,12 @@ export default function CatalogScreen() {
 
             return (
               <View style={styles.card}>
-                <TouchableOpacity onPress={() => toggleApp(item.app_name)}>
+                <TouchableOpacity
+                  style={styles.cardHeader}
+                  onPress={() => toggleApp(item.app_name)}
+                >
                   <Text style={styles.cardTitle}>{item.app_name}</Text>
+                  <Text style={styles.cardChevron}>{isExpanded ? "–" : "+"}</Text>
                 </TouchableOpacity>
 
                 {isExpanded && (
@@ -187,7 +195,7 @@ export default function CatalogScreen() {
                             {isPending ? (
                               <ActivityIndicator
                                 size="small"
-                                color={isSelected ? "#fff" : "#2563eb"}
+                                color={isSelected ? theme.colors.accentText : theme.colors.accent}
                               />
                             ) : (
                               <Text
@@ -214,118 +222,133 @@ export default function CatalogScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff",
-    padding: 16,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "bold",
-    marginBottom: 16,
-  },
-  searchInput: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    marginBottom: 16,
-  },
-  chipsContainer: {
-    gap: 8,
-    paddingBottom: 16,
-  },
-  chip: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 16,
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    backgroundColor: "#fff",
-  },
-  chipActive: {
-    backgroundColor: "#2563eb",
-    borderColor: "#2563eb",
-  },
-  chipText: {
-    fontSize: 13,
-    color: "#444",
-    fontWeight: "500",
-  },
-  chipTextActive: {
-    color: "#fff",
-  },
-  loading: {
-    marginTop: 32,
-  },
-  error: {
-    color: "#dc2626",
-    textAlign: "center",
-    marginTop: 32,
-  },
-  empty: {
-    textAlign: "center",
-    color: "#666",
-    marginTop: 32,
-  },
-  listContent: {
-    paddingBottom: 24,
-  },
-  card: {
-    borderWidth: 1,
-    borderColor: "#eee",
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 12,
-    backgroundColor: "#fafafa",
-  },
-  cardTitle: {
-    fontSize: 17,
-    fontWeight: "600",
-  },
-  plansContainer: {
-    marginTop: 12,
-    gap: 10,
-  },
-  planRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderTopWidth: 1,
-    borderTopColor: "#eee",
-    paddingTop: 10,
-  },
-  planInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
-  planName: {
-    fontSize: 15,
-    fontWeight: "500",
-  },
-  planPrice: {
-    fontSize: 14,
-    color: "#666",
-    marginTop: 2,
-  },
-  selectButton: {
-    borderWidth: 1,
-    borderColor: "#2563eb",
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-  },
-  selectButtonActive: {
-    backgroundColor: "#2563eb",
-  },
-  selectButtonText: {
-    color: "#2563eb",
-    fontWeight: "600",
-    fontSize: 14,
-  },
-  selectButtonTextActive: {
-    color: "#fff",
-  },
-});
+function createStyles(theme) {
+  const { colors, spacing, radius } = theme;
+
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+      padding: spacing.lg,
+    },
+    title: {
+      fontSize: 24,
+      fontWeight: "700",
+      color: colors.text,
+      marginBottom: spacing.md,
+    },
+    searchInput: {
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      paddingVertical: spacing.sm + 2,
+      fontSize: 16,
+      color: colors.text,
+      marginBottom: spacing.md,
+    },
+    chipsContainer: {
+      gap: spacing.sm,
+      paddingBottom: spacing.md,
+    },
+    chip: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius,
+      paddingVertical: spacing.xs + 2,
+      paddingHorizontal: spacing.md - 2,
+      backgroundColor: colors.background,
+    },
+    chipActive: {
+      backgroundColor: colors.accent,
+      borderColor: colors.accent,
+    },
+    chipText: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      fontWeight: "500",
+    },
+    chipTextActive: {
+      color: colors.accentText,
+    },
+    loading: {
+      marginTop: spacing.xl,
+    },
+    error: {
+      color: colors.error,
+      textAlign: "center",
+      marginTop: spacing.xl,
+    },
+    empty: {
+      textAlign: "center",
+      color: colors.textSecondary,
+      marginTop: spacing.xl,
+    },
+    listContent: {
+      paddingBottom: spacing.lg,
+    },
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: radius,
+      padding: spacing.md,
+      marginBottom: spacing.sm,
+    },
+    cardHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    cardTitle: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: colors.text,
+    },
+    cardChevron: {
+      fontSize: 18,
+      fontWeight: "600",
+      color: colors.textSecondary,
+    },
+    plansContainer: {
+      marginTop: spacing.md,
+      gap: spacing.sm + 2,
+    },
+    planRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      paddingTop: spacing.sm + 2,
+    },
+    planInfo: {
+      flex: 1,
+      marginRight: spacing.md,
+    },
+    planName: {
+      fontSize: 15,
+      fontWeight: "500",
+      color: colors.text,
+    },
+    planPrice: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      marginTop: 2,
+    },
+    selectButton: {
+      borderWidth: 1,
+      borderColor: colors.accent,
+      borderRadius: radius,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md - 2,
+    },
+    selectButtonActive: {
+      backgroundColor: colors.accent,
+    },
+    selectButtonText: {
+      color: colors.accent,
+      fontWeight: "600",
+      fontSize: 13,
+    },
+    selectButtonTextActive: {
+      color: colors.accentText,
+    },
+  });
+}
