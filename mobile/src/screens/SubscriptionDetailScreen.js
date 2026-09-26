@@ -1,26 +1,33 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Linking,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Text, View } from "react-native";
+import Svg, { Path } from "react-native-svg";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import * as api from "../api/client";
+import { AppTile, Card, CategoryTag, GroupedList, GroupedListRow, PillButton, Toggle } from "../components";
 import { useAuth } from "../context/AuthContext";
-import { useTheme } from "../theme";
-import { formatSubscriptionPrice } from "../utils/price";
+import { fontFamily, useTheme } from "../theme";
+import { formatSubscriptionPrice, formatTRY } from "../utils/price";
+
+function ChartUpIcon({ color }) {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M4 18l5-6 4 3 7-9M15 6h5v5"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
 
 export default function SubscriptionDetailScreen({ navigation, route }) {
   const { subscription } = route.params;
   const { token } = useAuth();
-  const theme = useTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { colors, spacing, brand, categories } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const [catalogItem, setCatalogItem] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -76,207 +83,154 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
     }
   }
 
+  const price = formatSubscriptionPrice(subscription);
   const priceHistory = catalogItem?.price_history || [];
-  const maxPrice = priceHistory.reduce((max, entry) => Math.max(max, Number(entry.price)), 0);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <TouchableOpacity style={styles.backLink} onPress={() => navigation.goBack()}>
-        <Text style={styles.backLinkText}>‹ Geri</Text>
-      </TouchableOpacity>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      contentContainerStyle={{
+        padding: spacing.md,
+        paddingTop: insets.top + spacing.sm,
+        paddingBottom: spacing.xl,
+      }}
+    >
+      <Pressable
+        onPress={() => navigation.goBack()}
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 22,
+          backgroundColor: colors.card,
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: spacing.md,
+        }}
+      >
+        <Text style={{ fontSize: 20, color: colors.text }}>‹</Text>
+      </Pressable>
 
-      <View style={styles.infoCard}>
-        <Text style={styles.appName}>{subscription.app_name}</Text>
-        {subscription.plan_name ? <Text style={styles.planName}>{subscription.plan_name}</Text> : null}
-
-        <Text style={styles.price}>{formatSubscriptionPrice(subscription)}</Text>
-
-        <View style={styles.metaRow}>
-          <Text style={styles.metaLabel}>Kullanım sıklığı</Text>
-          <Text style={styles.metaValue}>{subscription.usage_frequency || "—"}</Text>
+      <Card style={{ marginBottom: spacing.lg }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <AppTile
+            name={subscription.app_name}
+            size={56}
+            color={categories[subscription.category]}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontFamily: fontFamily.extraBold, fontSize: 28, color: colors.text }}>
+              {subscription.app_name}
+            </Text>
+            {subscription.plan_name ? (
+              <Text style={{ color: colors.text2, marginTop: 2 }}>{subscription.plan_name}</Text>
+            ) : null}
+          </View>
         </View>
-        <View style={styles.metaRow}>
-          <Text style={styles.metaLabel}>Fatura günü</Text>
-          <Text style={styles.metaValue}>
-            {subscription.billing_date ? `Her ayın ${subscription.billing_date}. günü` : "—"}
+
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-end",
+            justifyContent: "space-between",
+            marginTop: spacing.md,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "baseline", gap: 6 }}>
+            <Text style={{ fontFamily: fontFamily.extraBold, fontSize: 40, color: colors.text }}>
+              {price.primary}
+            </Text>
+            <Text style={{ color: colors.text2, fontSize: 15 }}>/ ay</Text>
+          </View>
+          {subscription.category ? <CategoryTag category={subscription.category} /> : null}
+        </View>
+        {price.secondary ? (
+          <Text style={{ color: colors.text2, marginTop: 2 }}>{price.secondary}</Text>
+        ) : null}
+      </Card>
+
+      <GroupedList style={{ marginBottom: spacing.lg }}>
+        <GroupedListRow style={{ justifyContent: "space-between" }}>
+          <Text style={{ color: colors.text2 }}>Kullanım sıklığı</Text>
+          <Text style={{ color: colors.text, fontWeight: "600" }}>
+            {subscription.usage_frequency || "—"}
+          </Text>
+        </GroupedListRow>
+        <GroupedListRow style={{ justifyContent: "space-between" }}>
+          <Text style={{ color: colors.text2 }}>Ödeme günü</Text>
+          <Text style={{ color: colors.text, fontWeight: "600" }}>
+            {subscription.billing_date ? `Her ayın ${subscription.billing_date}'i` : "—"}
+          </Text>
+        </GroupedListRow>
+        <GroupedListRow style={{ justifyContent: "space-between" }}>
+          <Text style={{ color: colors.text2 }}>Neden</Text>
+          <Text style={{ color: colors.text, fontWeight: "600", flexShrink: 1, textAlign: "right" }}>
+            {subscription.reason || "—"}
+          </Text>
+        </GroupedListRow>
+      </GroupedList>
+
+      <Card style={{ marginBottom: spacing.lg }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md }}>
+          <View
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              backgroundColor: "#FFE3A3",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <ChartUpIcon color={brand.ink} />
+          </View>
+          <Text style={{ fontFamily: fontFamily.bold, fontSize: 16, color: colors.text }}>
+            Fiyat geçmişi
           </Text>
         </View>
-      </View>
-
-      <View style={styles.section}>
-        <View style={styles.switchRow}>
-          <Text style={styles.sectionTitle}>Zam olursa haber ver</Text>
-          <Switch
-            value={priceAlertEnabled}
-            onValueChange={handleToggleAlert}
-            disabled={savingAlert}
-            trackColor={{ false: theme.colors.border, true: theme.colors.accent }}
-            thumbColor={theme.colors.background}
-          />
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Fiyat Geçmişi</Text>
 
         {loading ? (
-          <ActivityIndicator color={theme.colors.accent} />
+          <ActivityIndicator color={colors.primary} />
         ) : error ? (
-          <Text style={styles.error}>{error}</Text>
+          <Text style={{ color: colors.danger }}>{error}</Text>
         ) : priceHistory.length === 0 ? (
-          <Text style={styles.empty}>Fiyat geçmişi kaydı yok</Text>
+          <Text style={{ color: colors.text2 }}>
+            Henüz değişiklik yok. Yeni bir fiyat bulunduğunda eski fiyatlar burada tarihleriyle
+            listelenir.
+          </Text>
         ) : (
-          priceHistory.map((entry) => (
-            <View key={entry.id} style={styles.historyRow}>
-              <View style={styles.historyLabelRow}>
-                <Text style={styles.historyDate}>
+          <View style={{ gap: spacing.sm }}>
+            {priceHistory.map((entry) => (
+              <View
+                key={entry.id}
+                style={{ flexDirection: "row", justifyContent: "space-between" }}
+              >
+                <Text style={{ color: colors.text2 }}>
                   {new Date(entry.changed_at).toLocaleDateString("tr-TR")}
                 </Text>
-                <Text style={styles.historyPrice}>{entry.price}</Text>
+                <Text style={{ color: colors.text, fontWeight: "600" }}>{formatTRY(entry.price)}</Text>
               </View>
-              <View style={styles.historyBarTrack}>
-                <View
-                  style={[
-                    styles.historyBarFill,
-                    { width: `${maxPrice > 0 ? (Number(entry.price) / maxPrice) * 100 : 0}%` },
-                  ]}
-                />
-              </View>
-            </View>
-          ))
+            ))}
+          </View>
         )}
-      </View>
+      </Card>
+
+      <Card style={{ marginBottom: spacing.lg }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <Text style={{ fontFamily: fontFamily.bold, fontSize: 16, color: colors.text }}>
+            Zam olursa haber ver
+          </Text>
+          <Toggle value={priceAlertEnabled} onValueChange={handleToggleAlert} disabled={savingAlert} />
+        </View>
+      </Card>
 
       {catalogItem?.cancel_url ? (
-        <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
-          <Text style={styles.cancelButtonText}>Aboneliği İptal Et</Text>
-        </TouchableOpacity>
+        <View>
+          <PillButton title="Aboneliği iptal et" variant="danger" onPress={handleCancel} />
+          <Text style={{ color: colors.text2, fontSize: 12, textAlign: "center", marginTop: spacing.sm }}>
+            {subscription.app_name}'in iptal sayfası tarayıcıda açılır
+          </Text>
+        </View>
       ) : null}
     </ScrollView>
   );
-}
-
-function createStyles(theme) {
-  const { colors, spacing, radius } = theme;
-
-  return StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    content: {
-      padding: spacing.lg,
-      paddingBottom: spacing.xl,
-    },
-    backLink: {
-      marginBottom: spacing.md,
-    },
-    backLinkText: {
-      fontSize: 15,
-      color: colors.accent,
-      fontWeight: "500",
-    },
-    infoCard: {
-      backgroundColor: colors.surface,
-      borderRadius: radius,
-      padding: spacing.lg,
-      marginBottom: spacing.xl,
-    },
-    appName: {
-      fontSize: 22,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    planName: {
-      fontSize: 14,
-      color: colors.textSecondary,
-      marginTop: 2,
-    },
-    price: {
-      fontSize: 30,
-      fontWeight: "700",
-      color: colors.text,
-      marginTop: spacing.md,
-      marginBottom: spacing.md,
-    },
-    metaRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      paddingTop: spacing.sm,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-    },
-    metaLabel: {
-      fontSize: 14,
-      color: colors.textSecondary,
-    },
-    metaValue: {
-      fontSize: 14,
-      fontWeight: "500",
-      color: colors.text,
-    },
-    section: {
-      marginBottom: spacing.xl,
-    },
-    sectionTitle: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: colors.text,
-    },
-    switchRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-    },
-    error: {
-      color: colors.error,
-      fontSize: 14,
-      marginTop: spacing.sm,
-    },
-    empty: {
-      color: colors.textSecondary,
-      fontSize: 14,
-      marginTop: spacing.sm,
-    },
-    historyRow: {
-      marginTop: spacing.md,
-    },
-    historyLabelRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      marginBottom: spacing.xs,
-    },
-    historyDate: {
-      fontSize: 13,
-      color: colors.textSecondary,
-    },
-    historyPrice: {
-      fontSize: 13,
-      fontWeight: "600",
-      color: colors.text,
-    },
-    historyBarTrack: {
-      height: 8,
-      borderRadius: radius,
-      backgroundColor: colors.surface,
-      overflow: "hidden",
-    },
-    historyBarFill: {
-      height: "100%",
-      borderRadius: radius,
-      backgroundColor: colors.accent,
-    },
-    cancelButton: {
-      borderWidth: 1,
-      borderColor: colors.error,
-      borderRadius: radius,
-      paddingVertical: spacing.md - 2,
-      alignItems: "center",
-    },
-    cancelButtonText: {
-      color: colors.error,
-      fontSize: 16,
-      fontWeight: "600",
-    },
-  });
 }

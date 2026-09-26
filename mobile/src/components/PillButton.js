@@ -1,4 +1,4 @@
-import { Pressable, Text } from "react-native";
+import { ActivityIndicator, Pressable, Text } from "react-native";
 
 import { useTheme } from "../theme";
 
@@ -6,10 +6,10 @@ const HEIGHT = 56;
 
 export function PillButton({
   title,
-  children,
   onPress,
   variant = "primary",
   disabled = false,
+  loading = false,
   style,
 }) {
   const { colors, typography, pillRadius } = useTheme();
@@ -36,11 +36,12 @@ export function PillButton({
   };
 
   const v = variants[variant] ?? variants.primary;
+  const isDisabled = disabled || loading;
 
   return (
     <Pressable
       onPress={onPress}
-      disabled={disabled}
+      disabled={isDisabled}
       accessibilityRole="button"
       style={({ pressed }) => [
         {
@@ -56,9 +57,11 @@ export function PillButton({
         style,
       ]}
     >
-      <Text style={[typography.button, { color: v.textColor }]}>
-        {title ?? children}
-      </Text>
+      {loading ? (
+        <ActivityIndicator color={v.textColor} />
+      ) : (
+        <Text style={[typography.button, { color: v.textColor }]}>{title}</Text>
+      )}
     </Pressable>
   );
 }

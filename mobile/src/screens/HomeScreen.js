@@ -1,18 +1,21 @@
-import { useCallback, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { useCallback, useRef, useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import * as api from "../api/client";
+import {
+  AppTile,
+  BrandIcon,
+  Card,
+  CategoryBadge,
+  GroupedList,
+  GroupedListRow,
+  PillButton,
+} from "../components";
 import { useAuth } from "../context/AuthContext";
-import { useTheme } from "../theme";
-import { formatSubscriptionPrice } from "../utils/price";
+import { fontFamily, useTheme } from "../theme";
+import { formatSubscriptionPrice, formatTRY } from "../utils/price";
 
 function getNextBillingInfo(billingDate) {
   const today = new Date();
@@ -30,16 +33,23 @@ function getNextBillingInfo(billingDate) {
   }
 
   const daysLeft = Math.round((next - today) / (1000 * 60 * 60 * 24));
-  return { daysLeft };
+  const dateLabel = next.toLocaleDateString("tr-TR", {
+    day: "numeric",
+    month: "long",
+  });
+
+  return { daysLeft, dateLabel };
 }
 
 export default function HomeScreen({ navigation }) {
-  const { user, token, logout } = useAuth();
-  const theme = useTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { user, token } = useAuth();
+  const { colors, spacing, typography, brand, categories } = useTheme();
+  const insets = useSafeAreaInsets();
   const [subscriptions, setSubscriptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const scrollRef = useRef(null);
+  const subsSectionY = useRef(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -76,6 +86,7 @@ export default function HomeScreen({ navigation }) {
     (sum, sub) => sum + Number(sub.current_price_try ?? sub.current_price),
     0
   );
+  const hasUsd = subscriptions.some((sub) => sub.currency === "USD");
 
   const upcomingPayments = subscriptions
     .filter((sub) => sub.billing_date)
@@ -91,263 +102,223 @@ export default function HomeScreen({ navigation }) {
   const categoryEntries = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
   const categoryGrandTotal = categoryEntries.reduce((sum, [, value]) => sum + value, 0);
 
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.greeting}>Hoş geldin, {user?.email}</Text>
+  function goToCatalog() {
+    navigation.navigate("Catalog");
+  }
 
-      <View style={styles.totalCard}>
-        <Text style={styles.totalLabel}>Toplam Aylık Gider</Text>
-        <Text style={styles.totalValue}>{totalTry.toFixed(2)} ₺</Text>
+  function scrollToSubscriptions() {
+    scrollRef.current?.scrollTo({ y: subsSectionY.current, animated: true });
+  }
+
+  return (
+    <ScrollView
+      ref={scrollRef}
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      contentContainerStyle={{
+        padding: spacing.md,
+        paddingTop: insets.top + spacing.sm,
+        paddingBottom: spacing.xl,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          marginBottom: spacing.lg,
+        }}
+      >
+        <View>
+          <Text style={[typography.screenTitle, { color: colors.text }]}>Merhaba</Text>
+          <Text style={{ color: colors.text2, fontSize: 14, marginTop: 2 }}>
+            {user?.email}
+          </Text>
+        </View>
+        <BrandIcon size={40} />
       </View>
 
-      {upcomingPayments.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Yaklaşan Ödemeler</Text>
+      <Card noPadding style={{ marginBottom: spacing.lg }}>
+        <View style={{ padding: spacing.md }}>
+          <Text style={{ color: colors.text2, fontSize: 13, fontWeight: "600" }}>
+            Aylık toplam
+          </Text>
+          <Text style={[typography.amountLarge, { color: colors.text, marginTop: 4 }]}>
+            {formatTRY(totalTry)}
+          </Text>
+          <Text style={{ color: colors.text2, fontSize: 13, marginTop: 6 }}>
+            {subscriptions.length} abonelik.
+            {hasUsd ? " Dolar planları güncel kurla hesaplandı." : ""}
+          </Text>
+        </View>
 
-          {upcomingPayments.map((item) => (
-            <View key={item.id} style={styles.upcomingRow}>
-              <Text style={styles.upcomingApp}>{item.app_name}</Text>
-              <View style={styles.upcomingBadge}>
-                <Text style={styles.upcomingBadgeText}>
-                  {item.daysLeft <= 0 ? "Bugün" : `${item.daysLeft} gün kaldı`}
-                </Text>
-              </View>
-            </View>
-          ))}
+        <View style={{ height: 1, backgroundColor: colors.divider }} />
+
+        <View style={{ flexDirection: "row", height: 56 }}>
+          <Pressable
+            onPress={goToCatalog}
+            style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
+          >
+            <Text style={{ fontWeight: "700", color: colors.text }}>Abonelik ekle</Text>
+          </Pressable>
+          <View style={{ width: 1, backgroundColor: colors.divider }} />
+          <Pressable
+            onPress={scrollToSubscriptions}
+            style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
+          >
+            <Text style={{ fontWeight: "700", color: colors.text }}>Aboneliklerim</Text>
+          </Pressable>
+        </View>
+      </Card>
+
+      {upcomingPayments.length > 0 && (
+        <View style={{ marginBottom: spacing.lg }}>
+          <Text style={[typography.sectionTitle, { color: colors.text, marginBottom: spacing.sm }]}>
+            Yaklaşan ödemeler
+          </Text>
+
+          <GroupedList>
+            {upcomingPayments.map((item) => {
+              const price = formatSubscriptionPrice(item);
+              return (
+                <GroupedListRow
+                  key={item.id}
+                  onPress={() =>
+                    navigation.navigate("SubscriptionDetail", { subscription: item })
+                  }
+                >
+                  <AppTile name={item.app_name} color={categories[item.category]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontWeight: "600" }} numberOfLines={1}>
+                      {item.app_name}
+                      {item.plan_name ? ` ${item.plan_name}` : ""}
+                    </Text>
+                    <Text style={{ color: colors.text2, fontSize: 13, marginTop: 2 }}>
+                      {item.dateLabel}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={{ fontWeight: "700", color: colors.text }}>{price.primary}</Text>
+                    <View
+                      style={{
+                        backgroundColor: brand.safran,
+                        borderRadius: 999,
+                        paddingHorizontal: 8,
+                        paddingVertical: 2,
+                        marginTop: 4,
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: brand.ink }}>
+                        {item.daysLeft <= 0 ? "Bugün" : `${item.daysLeft} gün`}
+                      </Text>
+                    </View>
+                  </View>
+                </GroupedListRow>
+              );
+            })}
+          </GroupedList>
         </View>
       )}
 
       {categoryEntries.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Kategoriye Göre Dağılım</Text>
+        <View style={{ marginBottom: spacing.lg }}>
+          <Text style={[typography.sectionTitle, { color: colors.text, marginBottom: spacing.sm }]}>
+            Kategoriler
+          </Text>
 
-          {categoryEntries.map(([category, total]) => {
-            const percent = categoryGrandTotal > 0 ? (total / categoryGrandTotal) * 100 : 0;
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
+            {categoryEntries.map(([category, total]) => {
+              const percent = categoryGrandTotal > 0 ? (total / categoryGrandTotal) * 100 : 0;
 
-            return (
-              <View key={category} style={styles.categoryRow}>
-                <View style={styles.categoryHeader}>
-                  <Text style={styles.categoryName}>{category}</Text>
-                  <Text style={styles.categoryValue}>
-                    {total.toFixed(2)} ₺ · %{percent.toFixed(0)}
+              return (
+                <Card key={category} style={{ width: "47%" }}>
+                  <CategoryBadge category={category} />
+                  <Text style={{ color: colors.text2, fontSize: 13, marginTop: spacing.sm }}>
+                    {category}
                   </Text>
-                </View>
-                <View style={styles.categoryBarTrack}>
-                  <View style={[styles.categoryBarFill, { width: `${percent}%` }]} />
-                </View>
-              </View>
-            );
-          })}
+                  <Text
+                    style={{
+                      fontFamily: fontFamily.bold,
+                      fontSize: 22,
+                      color: colors.text,
+                      marginTop: 2,
+                    }}
+                  >
+                    {formatTRY(total)}
+                  </Text>
+                  <Text style={{ color: colors.text2, fontSize: 12, marginTop: 2 }}>
+                    Toplamın %{percent.toFixed(0)}
+                  </Text>
+                </Card>
+              );
+            })}
+          </View>
         </View>
       )}
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Seçtiğim Abonelikler</Text>
+      <View onLayout={(event) => (subsSectionY.current = event.nativeEvent.layout.y)}>
+        <Text style={[typography.sectionTitle, { color: colors.text, marginBottom: spacing.sm }]}>
+          Aboneliklerim
+        </Text>
 
         {loading ? (
-          <ActivityIndicator style={styles.loading} color={theme.colors.accent} />
+          <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.md }} />
         ) : error ? (
-          <Text style={styles.error}>{error}</Text>
+          <Text style={{ color: colors.danger }}>{error}</Text>
         ) : subscriptions.length === 0 ? (
-          <Text style={styles.empty}>Henüz bir abonelik seçmedin</Text>
+          <View style={{ gap: spacing.sm }}>
+            <Text style={{ color: colors.text2 }}>Henüz bir abonelik eklemedin.</Text>
+            <PillButton title="Abonelik ekle" onPress={goToCatalog} />
+          </View>
         ) : (
-          subscriptions.map((item) => (
-            <TouchableOpacity
-              key={item.id}
-              style={styles.subCard}
-              onPress={() => navigation.navigate("SubscriptionDetail", { subscription: item })}
-            >
-              <View style={styles.subInfo}>
-                <Text style={styles.subApp}>{item.app_name}</Text>
-                {item.plan_name ? <Text style={styles.subPlan}>{item.plan_name}</Text> : null}
-                {item.reason ? <Text style={styles.subReason}>{item.reason}</Text> : null}
-              </View>
-              <Text style={styles.subPrice}>{formatSubscriptionPrice(item)}</Text>
-            </TouchableOpacity>
-          ))
+          <GroupedList>
+            {subscriptions.map((item) => {
+              const price = formatSubscriptionPrice(item);
+              return (
+                <GroupedListRow
+                  key={item.id}
+                  onPress={() =>
+                    navigation.navigate("SubscriptionDetail", { subscription: item })
+                  }
+                >
+                  <AppTile name={item.app_name} color={categories[item.category]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontWeight: "600" }} numberOfLines={1}>
+                      {item.app_name}
+                    </Text>
+                    {item.plan_name ? (
+                      <Text style={{ color: colors.text2, fontSize: 13, marginTop: 1 }}>
+                        {item.plan_name}
+                      </Text>
+                    ) : null}
+                    {item.reason ? (
+                      <Text
+                        style={{
+                          color: colors.text2,
+                          fontSize: 13,
+                          fontStyle: "italic",
+                          marginTop: 1,
+                        }}
+                        numberOfLines={1}
+                      >
+                        {item.reason}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={{ fontWeight: "700", color: colors.text }}>{price.primary}</Text>
+                    {price.secondary ? (
+                      <Text style={{ fontSize: 12, color: colors.text2 }}>{price.secondary}</Text>
+                    ) : null}
+                  </View>
+                  <Text style={{ marginLeft: spacing.xs, color: colors.text2, fontSize: 18 }}>
+                    ›
+                  </Text>
+                </GroupedListRow>
+              );
+            })}
+          </GroupedList>
         )}
       </View>
-
-      <TouchableOpacity
-        style={styles.primaryButton}
-        onPress={() => navigation.navigate("Catalog")}
-      >
-        <Text style={styles.primaryButtonText}>Aboneliklerimi Yönet</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.secondaryButton} onPress={logout}>
-        <Text style={styles.secondaryButtonText}>Çıkış Yap</Text>
-      </TouchableOpacity>
     </ScrollView>
   );
-}
-
-function createStyles(theme) {
-  const { colors, spacing, radius } = theme;
-
-  return StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    content: {
-      padding: spacing.lg,
-      paddingBottom: spacing.xl,
-    },
-    greeting: {
-      fontSize: 15,
-      color: colors.textSecondary,
-      marginBottom: spacing.lg,
-    },
-    totalCard: {
-      backgroundColor: colors.surface,
-      borderRadius: radius,
-      padding: spacing.lg,
-      marginBottom: spacing.xl,
-    },
-    totalLabel: {
-      fontSize: 14,
-      color: colors.textSecondary,
-      fontWeight: "500",
-      marginBottom: spacing.xs,
-    },
-    totalValue: {
-      fontSize: 34,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    section: {
-      marginBottom: spacing.xl,
-    },
-    sectionTitle: {
-      fontSize: 18,
-      fontWeight: "600",
-      color: colors.text,
-      marginBottom: spacing.md,
-    },
-    loading: {
-      marginVertical: spacing.md,
-    },
-    error: {
-      color: colors.error,
-      fontSize: 14,
-    },
-    empty: {
-      color: colors.textSecondary,
-      fontSize: 14,
-    },
-    upcomingRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      backgroundColor: colors.surface,
-      borderRadius: radius,
-      padding: spacing.md,
-      marginBottom: spacing.sm,
-    },
-    upcomingApp: {
-      fontSize: 15,
-      fontWeight: "500",
-      color: colors.text,
-    },
-    upcomingBadge: {
-      backgroundColor: colors.background,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radius,
-      paddingVertical: spacing.xs,
-      paddingHorizontal: spacing.sm + 2,
-    },
-    upcomingBadgeText: {
-      fontSize: 12,
-      fontWeight: "600",
-      color: colors.accent,
-    },
-    categoryRow: {
-      marginBottom: spacing.md,
-    },
-    categoryHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      marginBottom: spacing.xs,
-    },
-    categoryName: {
-      fontSize: 14,
-      fontWeight: "500",
-      color: colors.text,
-    },
-    categoryValue: {
-      fontSize: 13,
-      color: colors.textSecondary,
-    },
-    categoryBarTrack: {
-      height: 8,
-      borderRadius: radius,
-      backgroundColor: colors.surface,
-      overflow: "hidden",
-    },
-    categoryBarFill: {
-      height: "100%",
-      borderRadius: radius,
-      backgroundColor: colors.accent,
-    },
-    subCard: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      backgroundColor: colors.surface,
-      borderRadius: radius,
-      padding: spacing.md,
-      marginBottom: spacing.sm,
-    },
-    subInfo: {
-      flex: 1,
-      marginRight: spacing.md,
-    },
-    subApp: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: colors.text,
-    },
-    subPlan: {
-      fontSize: 13,
-      color: colors.textSecondary,
-      marginTop: 2,
-    },
-    subReason: {
-      fontSize: 12,
-      color: colors.textSecondary,
-      marginTop: 4,
-      fontStyle: "italic",
-    },
-    subPrice: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: colors.text,
-    },
-    primaryButton: {
-      backgroundColor: colors.accent,
-      borderRadius: radius,
-      paddingVertical: spacing.md - 2,
-      alignItems: "center",
-      marginBottom: spacing.sm,
-    },
-    primaryButtonText: {
-      color: colors.accentText,
-      fontSize: 16,
-      fontWeight: "600",
-    },
-    secondaryButton: {
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radius,
-      paddingVertical: spacing.md - 2,
-      alignItems: "center",
-    },
-    secondaryButtonText: {
-      color: colors.text,
-      fontSize: 16,
-      fontWeight: "600",
-    },
-  });
 }

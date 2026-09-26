@@ -8,6 +8,7 @@ import {
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import MainTabs from './src/navigation/MainTabs';
@@ -79,8 +80,10 @@ export default function App() {
   }
 
   return (
-    <AuthProvider>
-      <ThemedNavigationContainer />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <ThemedNavigationContainer />
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
