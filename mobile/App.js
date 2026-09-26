@@ -10,8 +10,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
 import { AuthProvider, useAuth } from './src/context/AuthContext';
-import CatalogScreen from './src/screens/CatalogScreen';
-import HomeScreen from './src/screens/HomeScreen';
+import MainTabs from './src/navigation/MainTabs';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import SubscriptionDetailScreen from './src/screens/SubscriptionDetailScreen';
@@ -28,8 +27,7 @@ function RootNavigator() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {isAuthenticated ? (
         <>
-          <Stack.Screen name="Home" component={HomeScreen} />
-          <Stack.Screen name="Catalog" component={CatalogScreen} />
+          <Stack.Screen name="MainTabs" component={MainTabs} />
           <Stack.Screen name="SubscriptionDetail" component={SubscriptionDetailScreen} />
         </>
       ) : (
