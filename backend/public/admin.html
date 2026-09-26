@@ -2,157 +2,286 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Admin Panel — Abonelik Kataloğu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&display=swap"
+  rel="stylesheet"
+/>
 <style>
+  :root {
+    --bg: #F2F1F4;
+    --card: #FFFFFF;
+    --text: #15131A;
+    --text2: #5F5B66;
+    --divider: #E6E4EA;
+    --field: #F2F1F4;
+    --primary: #15131A;
+    --on-primary: #FFFFFF;
+    --danger: #C4321C;
+    --ok: #16A34A;
+    --radius-card: 24px;
+    --radius-input: 16px;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
     max-width: 960px;
-    margin: 32px auto;
-    padding: 0 16px;
-    color: #1a1a1a;
+    margin: 0 auto;
+    padding: 32px 16px 64px;
+    color: var(--text);
+    background: var(--bg);
   }
-  h1 {
-    font-size: 22px;
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 24px;
   }
+
+  .brand-name {
+    font-family: "Bricolage Grotesque", sans-serif;
+    font-weight: 800;
+    font-size: 24px;
+    letter-spacing: -0.5px;
+    line-height: 1;
+  }
+
+  .brand-subtitle {
+    color: var(--text2);
+    font-size: 13px;
+    margin-top: 2px;
+  }
+
   h2 {
+    font-family: "Bricolage Grotesque", sans-serif;
+    font-weight: 700;
     font-size: 16px;
-    margin-top: 32px;
+    margin: 0 0 12px;
   }
+
+  .card {
+    background: var(--card);
+    border-radius: var(--radius-card);
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  #mainSection {
+    display: none;
+  }
+
   #authSection {
     display: flex;
     gap: 8px;
     align-items: center;
   }
-  input, button {
+
+  #authSection input {
+    flex: 1;
+  }
+
+  input, select, button {
     font-size: 14px;
-    padding: 8px 10px;
-    box-sizing: border-box;
+    font-family: inherit;
   }
-  input {
-    border: 1px solid #ccc;
-    border-radius: 6px;
+
+  input, select {
+    padding: 10px 14px;
+    border: none;
+    border-radius: var(--radius-input);
+    background: var(--field);
+    color: var(--text);
   }
+
+  input::placeholder {
+    color: var(--text2);
+  }
+
   button {
     border: none;
-    border-radius: 6px;
-    background: #2563eb;
-    color: #fff;
+    border-radius: 999px;
+    padding: 10px 18px;
+    background: var(--primary);
+    color: var(--on-primary);
+    font-weight: 700;
     cursor: pointer;
   }
+
   button:hover {
-    background: #1d4ed8;
+    opacity: 0.85;
   }
+
+  button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
   button.danger {
-    background: #dc2626;
+    background: transparent;
+    color: var(--danger);
+    padding: 10px 8px;
+    font-weight: 600;
   }
-  button.danger:hover {
-    background: #b91c1c;
-  }
+
   button.secondary {
-    background: #6b7280;
+    background: transparent;
+    color: var(--text);
+    border: 1.5px solid var(--text);
   }
-  button.secondary:hover {
-    background: #4b5563;
+
+  #catalogBody button[data-action="edit"] {
+    background: transparent;
+    color: var(--text);
+    text-decoration: underline;
+    font-weight: 600;
+    padding: 10px 8px;
   }
-  #mainSection {
-    display: none;
-  }
+
   #newForm {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin-bottom: 8px;
   }
-  #newForm input {
+
+  #newForm input, #newForm select {
     flex: 1;
-    min-width: 100px;
+    min-width: 120px;
   }
+
   table {
     width: 100%;
     border-collapse: collapse;
-    margin-top: 12px;
   }
+
   th, td {
     text-align: left;
-    padding: 8px;
-    border-bottom: 1px solid #eee;
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--divider);
     font-size: 14px;
   }
+
   th {
-    color: #555;
+    color: var(--text2);
     font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
   }
+
   td.actions {
     display: flex;
-    gap: 6px;
+    gap: 4px;
+    border-bottom: none;
+    align-items: center;
   }
+
+  td.actions button {
+    white-space: nowrap;
+  }
+
   #status {
     margin-top: 12px;
     font-size: 14px;
+    font-weight: 600;
   }
+
   #status.error {
-    color: #dc2626;
+    color: var(--danger);
   }
+
   #status.ok {
-    color: #16a34a;
+    color: var(--ok);
   }
+
   .price-input {
     width: 90px;
   }
+
   #scanSection {
     display: flex;
     align-items: center;
     gap: 12px;
-    margin-top: 16px;
   }
+
   #scanStatus {
-    font-size: 14px;
-    color: #555;
+    font-size: 13px;
+    color: var(--text2);
+  }
+
+  a {
+    color: var(--text);
   }
 </style>
 </head>
 <body>
-  <h1>Admin Panel — Abonelik Kataloğu</h1>
+  <div class="brand">
+    <svg width="40" height="40" viewBox="0 0 512 512">
+      <rect width="512" height="512" rx="114" fill="#15131A" />
+      <path
+        d="M 54.0 318.0 C 56.0 314.2 62.0 300.7 66.0 295.4 C 70.0 290.0 74.0 286.0 78.0 286.0 C 82.0 286.0 86.0 290.0 90.0 295.4 C 94.0 300.7 98.0 310.5 102.0 318.0 C 106.0 325.5 110.0 335.3 114.0 340.6 C 118.0 346.0 122.0 350.0 126.0 350.0 C 130.0 350.0 134.0 346.0 138.0 340.6 C 142.0 335.3 146.0 325.5 150.0 318.0 C 154.0 310.5 158.0 300.7 162.0 295.4 C 166.0 290.0 170.0 286.0 174.0 286.0 C 178.0 286.0 182.0 290.0 186.0 295.4 C 190.0 300.7 194.0 310.5 198.0 318.0 C 202.0 325.5 206.0 335.3 210.0 340.6 C 214.0 346.0 218.0 350.0 222.0 350.0 C 226.0 350.0 230.0 346.0 234.0 340.6 C 238.0 335.3 242.0 325.5 246.0 318.0 C 250.0 310.5 254.0 300.7 258.0 295.4 C 262.0 290.0 268.0 287.6 270.0 286.0"
+        stroke="#FFC53D" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" fill="none"
+      />
+      <rect x="-26" y="-26" width="52" height="52" rx="15" fill="#FFC53D" transform="translate(331.1 278) rotate(-16.5)" />
+      <rect x="-26" y="-26" width="52" height="52" rx="15" fill="#FF8A3D" transform="translate(391.4 243.5) rotate(-43.8)" />
+      <rect x="-26" y="-26" width="52" height="52" rx="15" fill="#FF5E57" transform="translate(429.5 187.7) rotate(-65.8)" />
+    </svg>
+    <div>
+      <div class="brand-name">erişte</div>
+      <div class="brand-subtitle">Admin Panel · Abonelik Kataloğu</div>
+    </div>
+  </div>
 
-  <div id="authSection">
+  <div id="authSection" class="card">
     <input id="secretInput" type="password" placeholder="Admin secret" />
     <button id="connectButton">Bağlan</button>
   </div>
 
   <div id="mainSection">
-    <div id="scanSection">
+    <div id="scanSection" class="card">
       <button id="scanButton">Fiyatları Tara</button>
       <span id="scanStatus"></span>
     </div>
 
-    <h2>Yeni Ekle</h2>
-    <form id="newForm">
-      <input id="newAppName" placeholder="app_name" required />
-      <input id="newPlanName" placeholder="plan_name" />
-      <input id="newPrice" type="number" step="0.01" placeholder="current_price" required />
-      <input id="newCurrency" placeholder="currency (örn. TRY)" />
-      <select id="newCategory"></select>
-      <input id="newSourceUrl" placeholder="source_url" />
-      <input id="newCancelUrl" placeholder="İptal URL" />
-      <button type="submit">Ekle</button>
-    </form>
+    <div class="card">
+      <h2>Yeni Ekle</h2>
+      <form id="newForm">
+        <input id="newAppName" placeholder="app_name" required />
+        <input id="newPlanName" placeholder="plan_name" />
+        <input id="newPrice" type="number" step="0.01" placeholder="current_price" required />
+        <input id="newCurrency" placeholder="currency (örn. TRY)" />
+        <select id="newCategory"></select>
+        <input id="newSourceUrl" placeholder="source_url" />
+        <input id="newCancelUrl" placeholder="İptal URL" />
+        <button type="submit">Ekle</button>
+      </form>
+    </div>
 
-    <h2>Katalog</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>app_name</th>
-          <th>plan_name</th>
-          <th>current_price</th>
-          <th>currency</th>
-          <th>category</th>
-          <th>İptal URL</th>
-          <th>last_checked_at</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody id="catalogBody"></tbody>
-    </table>
+    <div class="card">
+      <h2>Katalog</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>app_name</th>
+            <th>plan_name</th>
+            <th>current_price</th>
+            <th>currency</th>
+            <th>category</th>
+            <th>İptal URL</th>
+            <th>last_checked_at</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="catalogBody"></tbody>
+      </table>
+    </div>
   </div>
 
   <div id="status"></div>
