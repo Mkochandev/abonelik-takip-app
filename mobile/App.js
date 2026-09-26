@@ -1,6 +1,13 @@
 import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import {
+  useFonts,
+  BricolageGrotesque_700Bold,
+  BricolageGrotesque_800ExtraBold,
+} from '@expo-google-fonts/bricolage-grotesque';
+import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
 
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import CatalogScreen from './src/screens/CatalogScreen';
@@ -9,6 +16,8 @@ import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import SubscriptionDetailScreen from './src/screens/SubscriptionDetailScreen';
 import { useTheme } from './src/theme';
+
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const Stack = createNativeStackNavigator();
 
@@ -39,11 +48,11 @@ function ThemedNavigationContainer() {
     ...(isDark ? DarkTheme : DefaultTheme),
     colors: {
       ...(isDark ? DarkTheme.colors : DefaultTheme.colors),
-      background: colors.background,
-      card: colors.background,
+      background: colors.bg,
+      card: colors.bg,
       text: colors.text,
-      border: colors.border,
-      primary: colors.accent,
+      border: colors.divider,
+      primary: colors.primary,
     },
   };
 
@@ -56,6 +65,21 @@ function ThemedNavigationContainer() {
 }
 
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    BricolageGrotesque_700Bold,
+    BricolageGrotesque_800ExtraBold,
+  });
+
+  useEffect(() => {
+    if (fontsLoaded) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) {
+    return null;
+  }
+
   return (
     <AuthProvider>
       <ThemedNavigationContainer />

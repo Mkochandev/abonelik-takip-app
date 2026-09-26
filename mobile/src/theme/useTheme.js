@@ -1,7 +1,8 @@
 import { useColorScheme } from "react-native";
 
-import { darkColors, lightColors } from "./colors";
-import { radius, spacing } from "./metrics";
+import { brandColors, categoryColors, darkColors, lightColors } from "./colors";
+import { pillRadius, radius, spacing } from "./metrics";
+import { typography } from "./typography";
 
 export function useTheme() {
   const scheme = useColorScheme();
@@ -10,7 +11,11 @@ export function useTheme() {
   return {
     isDark,
     colors: isDark ? darkColors : lightColors,
+    brand: brandColors,
+    categories: categoryColors,
     spacing,
     radius,
+    pillRadius,
+    typography,
   };
 }
