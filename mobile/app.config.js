@@ -26,6 +26,7 @@ export default {
     },
     plugins: [
       "expo-font",
+      "expo-secure-store",
       [
         "expo-splash-screen",
         {

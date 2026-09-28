@@ -43,7 +43,21 @@ function resolveBaseUrl() {
 
 export const API_BASE_URL = resolveBaseUrl();
 
-async function request(path, { method = "GET", token, body } = {}) {
+// AuthContext, oturumu SecureStore'da tuttuğu için refresh_token'a ve token
+// güncelleme/oturum kapatma mantığına buradan erişebilmemiz gerekiyor.
+// configureAuthClient ile bu davranışlar dışarıdan (AuthProvider mount
+// olduğunda) enjekte edilir.
+let authHandlers = {
+  getRefreshToken: () => null,
+  onTokenRefreshed: () => {},
+  onSessionExpired: () => {},
+};
+
+export function configureAuthClient(handlers) {
+  authHandlers = { ...authHandlers, ...handlers };
+}
+
+async function request(path, { method = "GET", token, body, isRetry = false } = {}) {
   const headers = { "Content-Type": "application/json" };
   if (token) {
     headers.Authorization = `Bearer ${token}`;
@@ -62,6 +76,23 @@ async function request(path, { method = "GET", token, body } = {}) {
     );
   }
 
+  if (response.status === 401 && token && !isRetry) {
+    const refreshToken = authHandlers.getRefreshToken();
+
+    if (refreshToken) {
+      try {
+        const refreshed = await refresh(refreshToken);
+        authHandlers.onTokenRefreshed(refreshed.session);
+        return request(path, { method, token: refreshed.session.access_token, body, isRetry: true });
+      } catch (refreshError) {
+        authHandlers.onSessionExpired();
+        throw new Error("Oturum süresi doldu, tekrar giriş yap");
+      }
+    }
+
+    authHandlers.onSessionExpired();
+  }
+
   if (response.status === 204) {
     return null;
   }
@@ -69,7 +100,10 @@ async function request(path, { method = "GET", token, body } = {}) {
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(data?.error || "Bilinmeyen bir hata oluştu");
+    const requestError = new Error(data?.error || "Bilinmeyen bir hata oluştu");
+    requestError.code = data?.code;
+    requestError.data = data;
+    throw requestError;
   }
 
   return data;
@@ -85,6 +119,14 @@ export function login(email, password) {
 
 export function logout(token) {
   return request("/auth/logout", { method: "POST", token });
+}
+
+export function refresh(refreshToken) {
+  return request("/auth/refresh", { method: "POST", body: { refresh_token: refreshToken } });
+}
+
+export function deleteAccount(token) {
+  return request("/auth/account", { method: "DELETE", token });
 }
 
 export function me(token) {
@@ -130,4 +172,8 @@ export function updateUserSubscription(token, id, updates) {
 
 export function removeUserSubscription(token, id) {
   return request(`/user/subscriptions/${id}`, { method: "DELETE", token });
+}
+
+export function syncPlan(token) {
+  return request("/user/plan/sync", { method: "POST", token });
 }

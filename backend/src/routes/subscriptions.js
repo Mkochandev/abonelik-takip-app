@@ -3,6 +3,7 @@ const express = require("express");
 const db = require("../config/db");
 const requireAuth = require("../middleware/requireAuth");
 const { getUsdToTryRate } = require("../services/exchangeRate");
+const { FREE_LIMIT, getEffectivePlan, getSubscriptionCount } = require("../services/planService");
 
 const router = express.Router();
 
@@ -17,6 +18,15 @@ router.post("/", async (req, res) => {
   }
 
   try {
+    const { plan } = await getEffectivePlan(req.user.id);
+
+    if (plan === "free") {
+      const count = await getSubscriptionCount(req.user.id);
+      if (count >= FREE_LIMIT) {
+        return res.status(403).json({ code: "LIMIT_REACHED", limit: FREE_LIMIT });
+      }
+    }
+
     const { rows } = await db.query(
       `insert into user_subscriptions
          (user_id, catalog_id, reason, usage_frequency, billing_date, price_alert_enabled)

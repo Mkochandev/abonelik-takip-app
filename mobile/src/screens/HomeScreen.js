@@ -42,7 +42,7 @@ function getNextBillingInfo(billingDate) {
 }
 
 export default function HomeScreen({ navigation }) {
-  const { user, token } = useAuth();
+  const { user, token, isAuthenticated, plan, limit } = useAuth();
   const { colors, spacing, typography, brand, categories } = useTheme();
   const insets = useSafeAreaInsets();
   const [subscriptions, setSubscriptions] = useState([]);
@@ -53,6 +53,11 @@ export default function HomeScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
       let isActive = true;
 
       async function fetchSubscriptions() {
@@ -81,6 +86,46 @@ export default function HomeScreen({ navigation }) {
       };
     }, [token])
   );
+
+  if (!isAuthenticated) {
+    return (
+      <ScrollView
+        style={{ flex: 1, backgroundColor: colors.bg }}
+        contentContainerStyle={{
+          padding: spacing.md,
+          paddingTop: insets.top + spacing.sm,
+          paddingBottom: spacing.xl,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            marginBottom: spacing.lg,
+          }}
+        >
+          <Text style={[typography.screenTitle, { color: colors.text }]}>Merhaba</Text>
+          <BrandIcon size={40} />
+        </View>
+
+        <Card>
+          <Text style={[typography.sectionTitle, { color: colors.text }]}>
+            Aboneliklerini tek yerde takip et
+          </Text>
+
+          <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
+            <PillButton title="Kayıt ol" onPress={() => navigation.navigate("Register")} />
+            <PillButton
+              title="Giriş yap"
+              variant="outline"
+              onPress={() => navigation.navigate("Login")}
+            />
+          </View>
+        </Card>
+      </ScrollView>
+    );
+  }
 
   const totalTry = subscriptions.reduce(
     (sum, sub) => sum + Number(sub.current_price_try ?? sub.current_price),
@@ -136,6 +181,23 @@ export default function HomeScreen({ navigation }) {
         </View>
         <BrandIcon size={40} />
       </View>
+
+      {plan === "free" && limit != null ? (
+        <Pressable
+          onPress={() => navigation.navigate("Paywall")}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: spacing.lg,
+          }}
+        >
+          <Text style={{ color: colors.text2, fontSize: 13 }}>
+            {subscriptions.length} / {limit} abonelik
+          </Text>
+          <Text style={{ color: colors.text, fontWeight: "700", fontSize: 13 }}>Sınırsız ol</Text>
+        </Pressable>
+      ) : null}
 
       <Card noPadding style={{ marginBottom: spacing.lg }}>
         <View style={{ padding: spacing.md }}>

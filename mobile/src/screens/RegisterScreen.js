@@ -3,8 +3,9 @@ import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { AuthLayout } from "./AuthLayout";
 
-export default function RegisterScreen({ navigation }) {
+export default function RegisterScreen({ navigation, route }) {
   const { register } = useAuth();
+  const promptMessage = route.params?.promptMessage;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
@@ -15,6 +16,7 @@ export default function RegisterScreen({ navigation }) {
     setLoading(true);
     try {
       await register(email.trim(), password);
+      navigation.goBack();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -25,6 +27,7 @@ export default function RegisterScreen({ navigation }) {
   return (
     <AuthLayout
       title="Hesap oluştur"
+      promptMessage={promptMessage}
       email={email}
       onChangeEmail={setEmail}
       password={password}
@@ -34,7 +37,7 @@ export default function RegisterScreen({ navigation }) {
       onSubmit={handleRegister}
       linkPrefix="Zaten hesabın var mı?"
       linkLabel="Giriş yap"
-      onLinkPress={() => navigation.navigate("Login")}
+      onLinkPress={() => navigation.replace("Login", { promptMessage })}
     />
   );
 }

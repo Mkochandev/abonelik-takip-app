@@ -62,8 +62,8 @@ function SearchIcon({ color }) {
   );
 }
 
-export default function CatalogScreen() {
-  const { token } = useAuth();
+export default function CatalogScreen({ navigation }) {
+  const { token, isAuthenticated, plan: userPlan, limit } = useAuth();
   const { colors, spacing, radius, typography, pillRadius, categories } = useTheme();
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState("");
@@ -81,6 +81,8 @@ export default function CatalogScreen() {
   const [usageFrequency, setUsageFrequency] = useState(null);
   const [billingDate, setBillingDate] = useState("");
   const [priceAlertEnabled, setPriceAlertEnabled] = useState(true);
+  const [pendingAuthPlan, setPendingAuthPlan] = useState(null);
+  const [pendingPaywallPlan, setPendingPaywallPlan] = useState(null);
 
   useEffect(() => {
     const searchTerm = query.trim();
@@ -92,8 +94,31 @@ export default function CatalogScreen() {
   }, [query, selectedCategory]);
 
   useEffect(() => {
+    if (!token) {
+      setSelections({});
+      return;
+    }
     fetchMySubscriptions();
-  }, []);
+  }, [token]);
+
+  // Misafir "Seç"e basıp giriş/kayıt olduğunda, bıraktığı yerden devam
+  // etsin diye seçtiği planı hatırlıyoruz ve giriş tamamlanınca neden
+  // penceresini otomatik açıyoruz.
+  useEffect(() => {
+    if (isAuthenticated && pendingAuthPlan) {
+      startReasonFlow(pendingAuthPlan);
+      setPendingAuthPlan(null);
+    }
+  }, [isAuthenticated]);
+
+  // Paywall'dan premium olarak dönüldüğünde, sınıra takıldığı için
+  // yarım kalan seçim akışını kaldığı yerden devam ettirir.
+  useEffect(() => {
+    if (userPlan === "premium" && pendingPaywallPlan) {
+      startReasonFlow(pendingPaywallPlan);
+      setPendingPaywallPlan(null);
+    }
+  }, [userPlan]);
 
   async function fetchCatalog(searchTerm) {
     setLoading(true);
@@ -127,19 +152,36 @@ export default function CatalogScreen() {
     setExpandedApp((current) => (current === appName ? null : appName));
   }
 
+  function startReasonFlow(plan) {
+    setReasonPlan(plan);
+    setSelectedChip(null);
+    setReasonText("");
+    setUsageFrequency(null);
+    setBillingDate("");
+    setPriceAlertEnabled(true);
+  }
+
   function handleSelectPress(appName, plan) {
     const existingSubscriptionId = selections[plan.id];
 
     if (existingSubscriptionId) {
       removePlan(plan, existingSubscriptionId);
-    } else {
-      setReasonPlan({ ...plan, app_name: appName });
-      setSelectedChip(null);
-      setReasonText("");
-      setUsageFrequency(null);
-      setBillingDate("");
-      setPriceAlertEnabled(true);
+      return;
     }
+
+    if (!isAuthenticated) {
+      setPendingAuthPlan({ ...plan, app_name: appName });
+      navigation.navigate("Login", { promptMessage: "Aboneliğini eklemek için giriş yap" });
+      return;
+    }
+
+    if (userPlan === "free" && limit != null && Object.keys(selections).length >= limit) {
+      setPendingPaywallPlan({ ...plan, app_name: appName });
+      navigation.navigate("Paywall");
+      return;
+    }
+
+    startReasonFlow({ ...plan, app_name: appName });
   }
 
   async function removePlan(plan, subscriptionId) {
@@ -166,7 +208,12 @@ export default function CatalogScreen() {
       const created = await api.addUserSubscription(token, plan.id, details);
       setSelections((current) => ({ ...current, [plan.id]: created.id }));
     } catch (err) {
-      Alert.alert("Hata", err.message);
+      if (err.code === "LIMIT_REACHED") {
+        setPendingPaywallPlan(plan);
+        navigation.navigate("Paywall");
+      } else {
+        Alert.alert("Hata", err.message);
+      }
     } finally {
       setPendingPlanId(null);
     }

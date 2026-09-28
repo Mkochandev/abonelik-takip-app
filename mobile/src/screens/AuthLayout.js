@@ -9,6 +9,7 @@ import { fontFamily, useTheme } from "../theme";
 // buton metni ve alt link farklıdır.
 export function AuthLayout({
   title,
+  promptMessage,
   linkPrefix,
   linkLabel,
   onLinkPress,
@@ -51,6 +52,22 @@ export function AuthLayout({
             {SLOGAN}
           </Text>
         </View>
+
+        {promptMessage ? (
+          <View
+            style={{
+              backgroundColor: colors.field,
+              borderRadius: radius.input,
+              paddingVertical: spacing.sm,
+              paddingHorizontal: spacing.md,
+              marginBottom: spacing.md,
+            }}
+          >
+            <Text style={{ color: colors.text, fontWeight: "600", textAlign: "center" }}>
+              {promptMessage}
+            </Text>
+          </View>
+        ) : null}
 
         <View
           style={{

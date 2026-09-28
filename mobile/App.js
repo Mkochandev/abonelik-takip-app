@@ -13,30 +13,37 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import MainTabs from './src/navigation/MainTabs';
 import LoginScreen from './src/screens/LoginScreen';
+import PaywallScreen from './src/screens/PaywallScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import SubscriptionDetailScreen from './src/screens/SubscriptionDetailScreen';
+import { configurePurchases } from './src/services/purchases';
 import { useTheme } from './src/theme';
+
+configurePurchases();
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const Stack = createNativeStackNavigator();
 
 function RootNavigator() {
-  const { isAuthenticated } = useAuth();
+  const { authReady } = useAuth();
 
+  if (!authReady) {
+    return null;
+  }
+
+  // MainTabs her zaman kök ekran: katalog herkese açık olduğu için misafir de
+  // sekmeler arasında gezinebilir. Login/Register, "Seç" gibi bir eylem
+  // giriş gerektirdiğinde üstte modal olarak açılır ve başarılı girişte
+  // navigation.goBack() ile kapanıp altındaki ekrana (Home/Profile/Catalog)
+  // döner.
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {isAuthenticated ? (
-        <>
-          <Stack.Screen name="MainTabs" component={MainTabs} />
-          <Stack.Screen name="SubscriptionDetail" component={SubscriptionDetailScreen} />
-        </>
-      ) : (
-        <>
-          <Stack.Screen name="Login" component={LoginScreen} />
-          <Stack.Screen name="Register" component={RegisterScreen} />
-        </>
-      )}
+      <Stack.Screen name="MainTabs" component={MainTabs} />
+      <Stack.Screen name="SubscriptionDetail" component={SubscriptionDetailScreen} />
+      <Stack.Screen name="Login" component={LoginScreen} options={{ presentation: "modal" }} />
+      <Stack.Screen name="Register" component={RegisterScreen} options={{ presentation: "modal" }} />
+      <Stack.Screen name="Paywall" component={PaywallScreen} options={{ presentation: "modal" }} />
     </Stack.Navigator>
   );
 }
