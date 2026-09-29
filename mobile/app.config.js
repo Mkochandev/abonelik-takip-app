@@ -4,6 +4,12 @@ export default {
   expo: {
     name: APP_NAME,
     slug: "abonelik-takip",
+        owner: "mkochan",
+    extra: {
+      eas: {
+        projectId: "63f13b8f-5a46-4209-9741-4726e3cc1bab",
+      },
+    },
     version: "1.0.0",
     orientation: "portrait",
     icon: "./assets/icon.png",
