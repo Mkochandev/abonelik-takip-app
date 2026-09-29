@@ -17,6 +17,16 @@ function packageTitle(pkg) {
   return pkg.product.title;
 }
 
+function packagePeriod(pkg) {
+  if (pkg.packageType === "ANNUAL") return " / yıl";
+  if (pkg.packageType === "MONTHLY") return " / ay";
+  return "";
+}
+
+const PLAN_SYNC_RETRY_DELAYS_MS = [5000, 15000, 30000, 60000];
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export default function PaywallScreen({ navigation }) {
   const { token, refreshPlan } = useAuth();
   const { colors, spacing, radius, brand } = useTheme();
@@ -78,17 +88,44 @@ export default function PaywallScreen({ navigation }) {
     }
     setPurchasing(true);
     setError(null);
+
     try {
       await Purchases.purchasePackage(selectedPackage);
-      await api.syncPlan(token);
-      await refreshPlan();
-      navigation.goBack();
     } catch (err) {
       if (!err.userCancelled) {
         setError(err.message || "Satın alma tamamlanamadı");
       }
+      setPurchasing(false);
+      return;
+    }
+
+    // Satın alma tamamlandı; bundan sonraki hatalar kullanıcıya satın alma
+    // hatası gibi gösterilmemeli. Plan senkronu başarısız olursa webhook
+    // zaten planı yazacak, biz de arka planda tekrar deneriz.
+    try {
+      await api.syncPlan(token);
+      const data = await refreshPlan();
+      if (data?.plan !== "premium") {
+        throw new Error("Plan henüz güncellenmedi");
+      }
+      navigation.goBack();
+    } catch (err) {
+      Alert.alert("Teşekkürler", "Satın alman alındı, birkaç dakika içinde aktif olacak.");
+      navigation.goBack();
+      retryPlanSyncInBackground();
     } finally {
       setPurchasing(false);
+    }
+  }
+
+  async function retryPlanSyncInBackground() {
+    for (const delay of PLAN_SYNC_RETRY_DELAYS_MS) {
+      await wait(delay);
+      await api.syncPlan(token).catch(() => {});
+      const data = await refreshPlan();
+      if (data?.plan === "premium") {
+        return;
+      }
     }
   }
 
@@ -184,7 +221,10 @@ export default function PaywallScreen({ navigation }) {
                       <Text style={{ fontFamily: fontFamily.bold, fontSize: 16, color: colors.text }}>
                         {packageTitle(pkg)}
                       </Text>
-                      <Text style={{ color: colors.text2, marginTop: 2 }}>{pkg.product.priceString}</Text>
+                      <Text style={{ color: colors.text2, marginTop: 2 }}>
+                        {pkg.product.priceString}
+                        {packagePeriod(pkg)}
+                      </Text>
                     </View>
 
                     {pkg.packageType === "ANNUAL" && annualSavingsPercent > 0 ? (

@@ -17,7 +17,7 @@ router.post("/register", async (req, res) => {
   const { data, error } = await supabaseAnon.auth.signUp({ email, password });
 
   if (error) {
-    return res.status(400).json({ error: error.message });
+    return res.status(400).json({ error: error.message, code: error.code });
   }
 
   res.status(201).json({ user: data.user, session: data.session });
@@ -33,7 +33,7 @@ router.post("/login", async (req, res) => {
   const { data, error } = await supabaseAnon.auth.signInWithPassword({ email, password });
 
   if (error) {
-    return res.status(401).json({ error: error.message });
+    return res.status(401).json({ error: error.message, code: error.code });
   }
 
   res.json({ user: data.user, session: data.session });

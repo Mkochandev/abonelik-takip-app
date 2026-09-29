@@ -28,17 +28,19 @@ function groupByAppName(rows) {
 
 // GET /api/catalog — tüm katalog, app_name'e göre gruplanmış
 // ?category=... verilirse yalnızca o kategorideki kayıtlar döner.
+// current_price < 0 olan kayıtlar herkese açık listelerde gösterilmez;
+// admin endpoint'leri bunları görmeye devam eder.
 router.get("/", async (req, res) => {
   const { category } = req.query;
 
   try {
     const { rows } = category
       ? await db.query(
-          "select * from subscriptions_catalog where category = $1 order by app_name, plan_name",
+          "select * from subscriptions_catalog where category = $1 and current_price >= 0 order by app_name, plan_name",
           [category]
         )
       : await db.query(
-          "select * from subscriptions_catalog order by app_name, plan_name"
+          "select * from subscriptions_catalog where current_price >= 0 order by app_name, plan_name"
         );
 
     res.json({ catalog: groupByAppName(rows) });
@@ -59,7 +61,8 @@ router.get("/search", async (req, res) => {
 
   try {
     const params = [`%${q}%`];
-    let sql = "select * from subscriptions_catalog where app_name ilike $1";
+    let sql =
+      "select * from subscriptions_catalog where app_name ilike $1 and current_price >= 0";
 
     if (category) {
       params.push(category);

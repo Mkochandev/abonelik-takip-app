@@ -146,8 +146,9 @@ async function scanSinglePrice(catalogItem) {
 }
 
 // Katalogdaki source_url'i olan tüm kayıtları sırayla tarar, aralarına
-// rate limit'e takılmamak için 2 saniye bekleme koyar.
-async function scanAllPrices() {
+// rate limit'e takılmamak için 2 saniye bekleme koyar. onProgress verilirse
+// her kayıttan sonra (tamamlanan, toplam) ile çağrılır.
+async function scanAllPrices({ onProgress } = {}) {
   const { rows } = await db.query(
     "select * from subscriptions_catalog where source_url is not null order by app_name, plan_name"
   );
@@ -157,6 +158,7 @@ async function scanAllPrices() {
   for (let i = 0; i < rows.length; i += 1) {
     const result = await scanSinglePrice(rows[i]);
     details.push(result);
+    onProgress?.(details.length, rows.length);
 
     if (i < rows.length - 1) {
       await sleep(DELAY_BETWEEN_SCANS_MS);

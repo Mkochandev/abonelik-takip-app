@@ -1,5 +1,7 @@
 import { Platform } from "react-native";
 
+import { translateAuthError } from "../utils/authErrors";
+
 // Backend'e hangi adresten ulaşılacağı ortama göre değişir:
 //
 // - Android emulator (AVD, Android Studio ile açılan sanal cihaz):
@@ -100,7 +102,9 @@ async function request(path, { method = "GET", token, body, isRetry = false } = 
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const requestError = new Error(data?.error || "Bilinmeyen bir hata oluştu");
+    const requestError = new Error(
+      translateAuthError(data?.code, data?.error) || "Bilinmeyen bir hata oluştu"
+    );
     requestError.code = data?.code;
     requestError.data = data;
     throw requestError;

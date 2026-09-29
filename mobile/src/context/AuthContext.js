@@ -30,16 +30,19 @@ export function AuthProvider({ children }) {
     setLimit(data.limit);
   }
 
+  // Güncel /auth/me verisini döner; başarısız olursa null döner.
   async function refreshPlan(activeToken) {
     const effectiveToken = activeToken || tokenRef.current;
     if (!effectiveToken) {
-      return;
+      return null;
     }
     try {
       const data = await api.me(effectiveToken);
       applyMeData(data);
+      return data;
     } catch (err) {
       // Yok say; mevcut plan bilgisi ekranda kalmaya devam eder.
+      return null;
     }
   }
 
@@ -84,11 +87,14 @@ export function AuthProvider({ children }) {
       }
 
       refreshTokenRef.current = refreshToken;
+      tokenRef.current = accessToken;
 
       try {
+        // api.me 401 alıp token'ı yenilerse onTokenRefreshed tokenRef'i
+        // günceller; bu yüzden eski accessToken yerine tokenRef'teki güncel
+        // değeri state'e yazıyoruz.
         const data = await api.me(accessToken);
-        tokenRef.current = accessToken;
-        setToken(accessToken);
+        setToken(tokenRef.current);
         applyMeData(data);
         await identifyPurchasesUser(data.user.id);
       } catch (err) {

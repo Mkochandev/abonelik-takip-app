@@ -501,23 +501,87 @@
     const scanButton = document.getElementById("scanButton");
     const scanStatusEl = document.getElementById("scanStatus");
 
-    scanButton.addEventListener("click", async () => {
-      scanButton.disabled = true;
-      scanStatusEl.textContent = "Taranıyor... (birkaç dakika sürebilir)";
+    const SCAN_POLL_INTERVAL_MS = 3000;
+    let scanPollTimer = null;
 
-      try {
-        const summary = await apiRequest("/scan-prices", { method: "POST" });
+    // Tarama durumunu ekrana yansıtır; tarama sürüyorsa true döner.
+    function renderScanState(state) {
+      if (state.status === "running") {
+        const progress = state.progress && state.progress.total
+          ? ` ${state.progress.done}/${state.progress.total}`
+          : "";
+        scanStatusEl.textContent = `Taranıyor...${progress} (birkaç dakika sürebilir)`;
+        scanButton.disabled = true;
+        return true;
+      }
+
+      scanButton.disabled = false;
+
+      if (state.status === "completed" && state.summary) {
+        const summary = state.summary;
         scanStatusEl.textContent =
           `Tarama bitti: ${summary.total} kayıt, ${summary.updated} güncellendi, ` +
           `${summary.unchanged} değişmedi, ${summary.failed} başarısız.`;
-        await loadCatalog();
+      } else if (state.status === "failed") {
+        scanStatusEl.textContent = "";
+        setStatus(`Tarama başarısız: ${state.error}`, "error");
+      }
+
+      return false;
+    }
+
+    function stopScanPolling() {
+      if (scanPollTimer) {
+        clearTimeout(scanPollTimer);
+        scanPollTimer = null;
+      }
+    }
+
+    async function pollScanStatus() {
+      stopScanPolling();
+
+      try {
+        const state = await apiRequest("/scan-status", { method: "GET" });
+        const running = renderScanState(state);
+
+        if (running) {
+          scanPollTimer = setTimeout(pollScanStatus, SCAN_POLL_INTERVAL_MS);
+        } else if (state.status === "completed") {
+          await loadCatalog();
+        }
+      } catch (err) {
+        scanButton.disabled = false;
+        setStatus(err.message, "error");
+      }
+    }
+
+    scanButton.addEventListener("click", async () => {
+      scanButton.disabled = true;
+      scanStatusEl.textContent = "Tarama başlatılıyor...";
+
+      try {
+        const state = await apiRequest("/scan-prices", { method: "POST" });
+        renderScanState(state);
+        scanPollTimer = setTimeout(pollScanStatus, SCAN_POLL_INTERVAL_MS);
       } catch (err) {
         scanStatusEl.textContent = "";
-        setStatus(err.message, "error");
-      } finally {
         scanButton.disabled = false;
+        setStatus(err.message, "error");
       }
     });
+
+    // Sayfa açıldığında devam eden bir tarama varsa takibe devam et.
+    async function resumeScanIfRunning() {
+      try {
+        const state = await apiRequest("/scan-status", { method: "GET" });
+        if (state.status === "running") {
+          renderScanState(state);
+          scanPollTimer = setTimeout(pollScanStatus, SCAN_POLL_INTERVAL_MS);
+        }
+      } catch (err) {
+        // Yok say; tarama durumu kritik değil.
+      }
+    }
 
     document.getElementById("connectButton").addEventListener("click", async () => {
       const value = secretInput.value.trim();
@@ -530,6 +594,7 @@
         sessionStorage.setItem("adminSecret", adminSecret);
         showAuthenticated();
         await loadCatalog();
+        resumeScanIfRunning();
       } catch (err) {
         setStatus(err.message, "error");
       }
@@ -538,6 +603,7 @@
     if (adminSecret) {
       showAuthenticated();
       loadCatalog();
+      resumeScanIfRunning();
     } else {
       showLoggedOut();
     }

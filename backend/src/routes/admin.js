@@ -8,16 +8,64 @@ const router = express.Router();
 
 router.use(requireAdminSecret);
 
+// Son fiyat taramasının durumu. Yalnızca bellekte tutulur; sunucu yeniden
+// başlarsa sıfırlanır.
+let scanState = {
+  status: "idle", // idle | running | completed | failed
+  started_at: null,
+  finished_at: null,
+  progress: null,
+  summary: null,
+  error: null,
+};
+
 // POST /api/admin/catalog/scan-prices — tüm kataloğu tarayıp fiyatları
-// Anthropic API'si ile güncel siteden çıkarmaya çalışır. Senkron çalışır
-// (31 kayıt için kabul edilebilir sürede biter) ve özet döner.
-router.post("/scan-prices", async (req, res) => {
-  try {
-    const summary = await scanAllPrices();
-    res.json(summary);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+// Anthropic API'si ile güncel siteden çıkarmaya çalışır. Tarama dakikalar
+// sürebildiği için arka planda başlatılır ve hemen 202 dönülür; sonuç
+// GET /scan-status ile sorgulanır.
+router.post("/scan-prices", (req, res) => {
+  if (scanState.status === "running") {
+    return res.status(202).json({ ...scanState, already_running: true });
   }
+
+  scanState = {
+    status: "running",
+    started_at: new Date().toISOString(),
+    finished_at: null,
+    progress: { done: 0, total: null },
+    summary: null,
+    error: null,
+  };
+
+  scanAllPrices({
+    onProgress: (done, total) => {
+      scanState.progress = { done, total };
+    },
+  })
+    .then((summary) => {
+      scanState = {
+        ...scanState,
+        status: "completed",
+        finished_at: new Date().toISOString(),
+        summary,
+      };
+    })
+    .catch((error) => {
+      console.error("scan-prices: tarama sırasında hata:", error.message);
+      scanState = {
+        ...scanState,
+        status: "failed",
+        finished_at: new Date().toISOString(),
+        error: error.message,
+      };
+    });
+
+  res.status(202).json(scanState);
+});
+
+// GET /api/admin/catalog/scan-status — son/devam eden taramanın durumu
+router.get("/scan-status", (req, res) => {
+  res.json(scanState);
 });
 
 // GET /api/admin/catalog — tüm katalog, düz liste (admin panel için)

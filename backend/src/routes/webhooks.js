@@ -2,7 +2,7 @@ const crypto = require("crypto");
 
 const express = require("express");
 
-const db = require("../config/db");
+const { isValidUserId, syncPlanFromRevenueCat } = require("../services/planService");
 
 const router = express.Router();
 
@@ -26,16 +26,20 @@ function isValidWebhookSecret(providedSecret) {
   return crypto.timingSafeEqual(providedBuffer, expectedBuffer);
 }
 
-const PREMIUM_EVENT_TYPES = new Set([
-  "INITIAL_PURCHASE",
-  "RENEWAL",
-  "UNCANCELLATION",
-  "PRODUCT_CHANGE",
-]);
+// TRANSFER olaylarında hem eski hem yeni sahibin planı değişir; diğer
+// olaylarda yalnızca app_user_id etkilenir.
+function affectedUserIds(event) {
+  if (event.type === "TRANSFER") {
+    return [...(event.transferred_from || []), ...(event.transferred_to || [])];
+  }
+  return event.app_user_id ? [event.app_user_id] : [];
+}
 
 // POST /api/webhooks/revenuecat — RevenueCat'ten gelen abonelik olayları.
 // app_user_id, mobil tarafta Purchases.logIn ile ayarlanan Supabase
-// kullanıcı id'sidir.
+// kullanıcı id'sidir. Olay tipine göre planı tahmin etmek yerine her
+// olayda RevenueCat'ten güncel entitlement durumunu çekip yazıyoruz; böylece
+// iade, iptal ve transfer gibi durumlar da doğru yansır.
 router.post("/revenuecat", async (req, res) => {
   if (!isValidWebhookSecret(req.headers.authorization)) {
     return res.status(401).json({ error: "Geçersiz webhook secret" });
@@ -43,26 +47,36 @@ router.post("/revenuecat", async (req, res) => {
 
   const event = req.body?.event;
 
-  if (!event || !event.app_user_id || !event.type) {
+  if (!event || !event.type) {
     return res.status(400).json({ error: "Geçersiz webhook gövdesi" });
   }
 
-  const { type, app_user_id, expiration_at_ms } = event;
+  // Anonim RevenueCat id'leri ($RCAnonymousID:...) ve TEST olayları gibi
+  // UUID olmayan kullanıcıları atlıyoruz; 200 dönüyoruz ki RevenueCat
+  // tekrar denemesin.
+  const userIds = [...new Set(affectedUserIds(event))];
+  const validUserIds = userIds.filter(isValidUserId);
+  const skippedUserIds = userIds.filter((id) => !isValidUserId(id));
+
+  if (skippedUserIds.length > 0) {
+    console.warn(
+      `[webhook] ${event.type} olayında geçersiz app_user_id atlandı: ${skippedUserIds.join(", ")}`
+    );
+  }
+
+  if (validUserIds.length === 0) {
+    return res.status(200).json({ received: true, skipped: true });
+  }
 
   try {
-    if (PREMIUM_EVENT_TYPES.has(type)) {
-      await db.query("update users set plan = 'premium', premium_expires_at = $2 where id = $1", [
-        app_user_id,
-        expiration_at_ms ? new Date(Number(expiration_at_ms)) : null,
-      ]);
-    } else if (type === "EXPIRATION") {
-      await db.query("update users set plan = 'free' where id = $1", [app_user_id]);
+    for (const userId of validUserIds) {
+      await syncPlanFromRevenueCat(userId);
     }
-    // CANCELLATION: kullanıcı dönem sonuna kadar premium kalmaya devam eder
-    // (premium_expires_at değişmez); başka bir işlem gerekmiyor.
 
     res.status(200).json({ received: true });
   } catch (error) {
+    // 5xx dönünce RevenueCat olayı daha sonra tekrar gönderir.
+    console.error(`[webhook] ${event.type} olayı işlenemedi:`, error.message);
     res.status(500).json({ error: error.message });
   }
 });

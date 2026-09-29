@@ -10,8 +10,11 @@ export default {
     userInterfaceStyle: "automatic",
     primaryColor: "#FFC53D",
     ios: {
-      supportsTablet: true,
+      supportsTablet: false,
       bundleIdentifier: "com.mkochandev.aboneliktakip",
+      config: {
+        usesNonExemptEncryption: false,
+      },
     },
     android: {
       package: "com.mkochandev.aboneliktakip",
