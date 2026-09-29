@@ -56,7 +56,7 @@ export function AuthLayout({
         {promptMessage ? (
           <View
             style={{
-              backgroundColor: colors.field,
+              backgroundColor: colors.accentSoft,
               borderRadius: radius.input,
               paddingVertical: spacing.sm,
               paddingHorizontal: spacing.md,

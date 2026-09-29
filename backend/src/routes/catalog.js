@@ -1,10 +1,12 @@
 const express = require("express");
 
 const db = require("../config/db");
+const { getUsdToTryRate } = require("../services/exchangeRate");
 
 const router = express.Router();
 
-function groupByAppName(rows) {
+// USD planlar için güncel kurla TL karşılığı (current_price_try) eklenir.
+function groupByAppName(rows, usdToTryRate) {
   const grouped = new Map();
 
   for (const row of rows) {
@@ -16,6 +18,10 @@ function groupByAppName(rows) {
       id: row.id,
       plan_name: row.plan_name,
       current_price: row.current_price,
+      current_price_try:
+        row.currency === "USD"
+          ? Number((Number(row.current_price) * usdToTryRate).toFixed(2))
+          : Number(row.current_price),
       currency: row.currency,
       category: row.category,
       source_url: row.source_url,
@@ -43,7 +49,9 @@ router.get("/", async (req, res) => {
           "select * from subscriptions_catalog where current_price >= 0 order by app_name, plan_name"
         );
 
-    res.json({ catalog: groupByAppName(rows) });
+    const usdToTryRate = await getUsdToTryRate();
+
+    res.json({ catalog: groupByAppName(rows, usdToTryRate) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -73,7 +81,9 @@ router.get("/search", async (req, res) => {
 
     const { rows } = await db.query(sql, params);
 
-    res.json({ catalog: groupByAppName(rows) });
+    const usdToTryRate = await getUsdToTryRate();
+
+    res.json({ catalog: groupByAppName(rows, usdToTryRate) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

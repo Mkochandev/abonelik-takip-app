@@ -1,22 +1,32 @@
-// TL fiyatları tr-TR biçiminde ("289,99 ₺") gösterir. USD abonelikler için
-// asıl tutar ("$20") ve güncel kurla TL karşılığı ("≈950,00 ₺") ayrı alanlar
-// olarak döner, böylece ekranlar ikisini farklı stillerle basabilir.
+// Fiyatları tr-TR biçiminde gösterir: TL "289,99 ₺", USD "$20,00". USD
+// abonelikler için asıl tutar ("$20,00") ve güncel kurla TL karşılığı
+// ("≈950,00 ₺") ayrı alanlar olarak döner, böylece ekranlar ikisini farklı
+// stillerle basabilir.
 
-const tryFormatter = new Intl.NumberFormat("tr-TR", {
+const amountFormatter = new Intl.NumberFormat("tr-TR", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
 
 export function formatTRY(amount) {
-  return `${tryFormatter.format(Number(amount))} ₺`;
+  return `${amountFormatter.format(Number(amount))} ₺`;
+}
+
+export function formatUSD(amount) {
+  return `$${amountFormatter.format(Number(amount))}`;
+}
+
+// Tek bir tutarı kendi para birimiyle biçimlendirir (örn. fiyat geçmişi).
+export function formatAmount(amount, currency) {
+  return currency === "USD" ? formatUSD(amount) : formatTRY(amount);
 }
 
 export function formatSubscriptionPrice(item) {
   if (item.currency === "USD") {
-    const tryValue = Number(item.current_price_try ?? item.current_price);
+    const tryValue = item.current_price_try;
     return {
-      primary: `$${item.current_price}`,
-      secondary: `≈${formatTRY(tryValue)}`,
+      primary: formatUSD(item.current_price),
+      secondary: tryValue != null ? `≈${formatTRY(tryValue)}` : null,
     };
   }
 

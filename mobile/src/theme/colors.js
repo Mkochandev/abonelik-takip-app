@@ -12,6 +12,8 @@ export const lightColors = {
   onPrimary: "#FFFFFF",
   accent: "#FFC53D",
   onAccent: "#15131A",
+  // Bilgi kutuları gibi zeminden ayrışması gereken yumuşak vurgu yüzeyi.
+  accentSoft: "#FFF0C7",
   danger: "#C4321C",
   switchOff: "#C9C5CF",
   scrim: "rgba(21,19,26,0.5)",
@@ -28,6 +30,7 @@ export const darkColors = {
   onPrimary: "#15131A",
   accent: "#FFC53D",
   onAccent: "#15131A",
+  accentSoft: "#3A3122",
   danger: "#FF7A66",
   switchOff: "#4A4652",
   scrim: "rgba(0,0,0,0.6)",

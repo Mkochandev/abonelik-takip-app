@@ -17,6 +17,15 @@ import { useAuth } from "../context/AuthContext";
 import { fontFamily, useTheme } from "../theme";
 import { formatSubscriptionPrice, formatTRY } from "../utils/price";
 
+// [a, b, c] -> [[a, b], [c]]
+function chunkPairs(items) {
+  const pairs = [];
+  for (let i = 0; i < items.length; i += 2) {
+    pairs.push(items.slice(i, i + 2));
+  }
+  return pairs;
+}
+
 function getNextBillingInfo(billingDate) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -287,32 +296,40 @@ export default function HomeScreen({ navigation }) {
             Kategoriler
           </Text>
 
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
-            {categoryEntries.map(([category, total]) => {
-              const percent = categoryGrandTotal > 0 ? (total / categoryGrandTotal) * 100 : 0;
+          {/* İki eşit sütun: her satırdaki kartlar flex: 1 ile paylaşılır, tek
+              kalan kartın yanına boş bir sütun konur ki genişliği değişmesin. */}
+          <View style={{ gap: spacing.sm }}>
+            {chunkPairs(categoryEntries).map((pair) => (
+              <View key={pair[0][0]} style={{ flexDirection: "row", gap: spacing.sm }}>
+                {pair.map(([category, total]) => {
+                  const percent =
+                    categoryGrandTotal > 0 ? (total / categoryGrandTotal) * 100 : 0;
 
-              return (
-                <Card key={category} style={{ width: "47%" }}>
-                  <CategoryBadge category={category} />
-                  <Text style={{ color: colors.text2, fontSize: 13, marginTop: spacing.sm }}>
-                    {category}
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: fontFamily.bold,
-                      fontSize: 22,
-                      color: colors.text,
-                      marginTop: 2,
-                    }}
-                  >
-                    {formatTRY(total)}
-                  </Text>
-                  <Text style={{ color: colors.text2, fontSize: 12, marginTop: 2 }}>
-                    Toplamın %{percent.toFixed(0)}
-                  </Text>
-                </Card>
-              );
-            })}
+                  return (
+                    <Card key={category} style={{ flex: 1 }}>
+                      <CategoryBadge category={category} />
+                      <Text style={{ color: colors.text2, fontSize: 13, marginTop: spacing.sm }}>
+                        {category}
+                      </Text>
+                      <Text
+                        style={{
+                          fontFamily: fontFamily.bold,
+                          fontSize: 22,
+                          color: colors.text,
+                          marginTop: 2,
+                        }}
+                      >
+                        {formatTRY(total)}
+                      </Text>
+                      <Text style={{ color: colors.text2, fontSize: 12, marginTop: 2 }}>
+                        Toplamın %{percent.toFixed(0)}
+                      </Text>
+                    </Card>
+                  );
+                })}
+                {pair.length === 1 ? <View style={{ flex: 1 }} /> : null}
+              </View>
+            ))}
           </View>
         </View>
       )}

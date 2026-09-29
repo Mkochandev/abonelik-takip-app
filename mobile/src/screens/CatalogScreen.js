@@ -17,6 +17,7 @@ import * as api from "../api/client";
 import { AppTile, Card, Chip, PillButton, Toggle } from "../components";
 import { useAuth } from "../context/AuthContext";
 import { fontFamily, useTheme } from "../theme";
+import { formatSubscriptionPrice } from "../utils/price";
 
 const CATEGORIES = [
   "Video/Dizi-Film",
@@ -284,6 +285,7 @@ export default function CatalogScreen({ navigation }) {
   }
 
   const reasonOptions = reasonPlan ? REASON_OPTIONS[reasonPlan.category] || [] : [];
+  const reasonPrice = reasonPlan ? formatSubscriptionPrice(reasonPlan) : null;
 
   return (
     <View
@@ -402,6 +404,7 @@ export default function CatalogScreen({ navigation }) {
                     {item.plans.map((plan) => {
                       const isSelected = Boolean(selections[plan.id]);
                       const isPending = pendingPlanId === plan.id;
+                      const price = formatSubscriptionPrice(plan);
 
                       return (
                         <View key={plan.id}>
@@ -426,8 +429,13 @@ export default function CatalogScreen({ navigation }) {
                                   marginTop: 2,
                                 }}
                               >
-                                {plan.current_price} {plan.currency}
+                                {price.primary}
                               </Text>
+                              {price.secondary ? (
+                                <Text style={{ fontSize: 13, color: colors.text2, marginTop: 2 }}>
+                                  {price.secondary}
+                                </Text>
+                              ) : null}
                             </View>
 
                             {isPending ? (
@@ -506,8 +514,13 @@ export default function CatalogScreen({ navigation }) {
                       marginTop: 2,
                     }}
                   >
-                    {reasonPlan.current_price} {reasonPlan.currency} / ay
+                    {reasonPrice.primary} / ay
                   </Text>
+                  {reasonPrice.secondary ? (
+                    <Text style={{ fontSize: 13, color: colors.text2, marginTop: 2 }}>
+                      {reasonPrice.secondary}
+                    </Text>
+                  ) : null}
                 </View>
               </View>
             )}

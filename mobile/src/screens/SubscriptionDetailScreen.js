@@ -7,7 +7,8 @@ import * as api from "../api/client";
 import { AppTile, Card, CategoryTag, GroupedList, GroupedListRow, PillButton, Toggle } from "../components";
 import { useAuth } from "../context/AuthContext";
 import { fontFamily, useTheme } from "../theme";
-import { formatSubscriptionPrice, formatTRY } from "../utils/price";
+import { formatAmount, formatSubscriptionPrice } from "../utils/price";
+import { withAccusativeSuffix } from "../utils/turkish";
 
 function ChartUpIcon({ color }) {
   return (
@@ -158,7 +159,9 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
         <GroupedListRow style={{ justifyContent: "space-between" }}>
           <Text style={{ color: colors.text2 }}>Ödeme günü</Text>
           <Text style={{ color: colors.text, fontWeight: "600" }}>
-            {subscription.billing_date ? `Her ayın ${subscription.billing_date}'i` : "—"}
+            {subscription.billing_date
+              ? `Her ayın ${withAccusativeSuffix(subscription.billing_date)}`
+              : "—"}
           </Text>
         </GroupedListRow>
         <GroupedListRow style={{ justifyContent: "space-between" }}>
@@ -207,7 +210,9 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
                 <Text style={{ color: colors.text2 }}>
                   {new Date(entry.changed_at).toLocaleDateString("tr-TR")}
                 </Text>
-                <Text style={{ color: colors.text, fontWeight: "600" }}>{formatTRY(entry.price)}</Text>
+                <Text style={{ color: colors.text, fontWeight: "600" }}>
+                  {formatAmount(entry.price, catalogItem?.currency ?? subscription.currency)}
+                </Text>
               </View>
             ))}
           </View>
@@ -227,7 +232,7 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
         <View>
           <PillButton title="Aboneliği iptal et" variant="danger" onPress={handleCancel} />
           <Text style={{ color: colors.text2, fontSize: 12, textAlign: "center", marginTop: spacing.sm }}>
-            {subscription.app_name}'in iptal sayfası tarayıcıda açılır
+            İptal sayfası tarayıcıda açılır
           </Text>
         </View>
       ) : null}
