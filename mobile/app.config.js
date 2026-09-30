@@ -10,6 +10,7 @@ export default {
         projectId: "63f13b8f-5a46-4209-9741-4726e3cc1bab",
       },
     },
+    scheme: "aboneliktakip",
     version: "1.0.0",
     orientation: "portrait",
     icon: "./assets/icon.png",
