@@ -11,10 +11,19 @@ function groupByAppName(rows, usdToTryRate) {
 
   for (const row of rows) {
     if (!grouped.has(row.app_name)) {
-      grouped.set(row.app_name, { app_name: row.app_name, plans: [] });
+      grouped.set(row.app_name, { app_name: row.app_name, domain: null, logo_url: null, plans: [] });
     }
 
-    grouped.get(row.app_name).plans.push({
+    const group = grouped.get(row.app_name);
+
+    // Logo alanları kayıt (plan) bazında tutulur; uygulama başlığında
+    // logosu tanımlı ilk planınki kullanılır.
+    if (!group.domain && !group.logo_url && (row.domain || row.logo_url)) {
+      group.domain = row.domain ?? null;
+      group.logo_url = row.logo_url ?? null;
+    }
+
+    group.plans.push({
       id: row.id,
       plan_name: row.plan_name,
       current_price: row.current_price,
@@ -24,6 +33,8 @@ function groupByAppName(rows, usdToTryRate) {
           : Number(row.current_price),
       currency: row.currency,
       category: row.category,
+      domain: row.domain ?? null,
+      logo_url: row.logo_url ?? null,
       source_url: row.source_url,
       last_checked_at: row.last_checked_at,
     });

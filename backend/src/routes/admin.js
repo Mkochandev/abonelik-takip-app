@@ -19,6 +19,60 @@ let scanState = {
   error: null,
 };
 
+const DOMAIN_REGEX = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
+
+// "https://www.Netflix.com/tr/" -> "netflix.com". Boş değer null olur;
+// geçersiz değerde { error } döner.
+function parseDomain(value) {
+  if (value === undefined || value === null) {
+    return { value: null };
+  }
+
+  if (typeof value !== "string") {
+    return { error: "Geçersiz alan adı" };
+  }
+
+  const domain = value
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/[/?#].*$/, "");
+
+  if (!domain) {
+    return { value: null };
+  }
+
+  if (!DOMAIN_REGEX.test(domain)) {
+    return { error: "Geçersiz alan adı (örn. netflix.com)" };
+  }
+
+  return { value: domain };
+}
+
+// Boş değer null olur; dolu değer https:// ile başlamalıdır.
+function parseLogoUrl(value) {
+  if (value === undefined || value === null) {
+    return { value: null };
+  }
+
+  if (typeof value !== "string") {
+    return { error: "Geçersiz logo URL" };
+  }
+
+  const logoUrl = value.trim();
+
+  if (!logoUrl) {
+    return { value: null };
+  }
+
+  if (!logoUrl.startsWith("https://")) {
+    return { error: "Logo URL https:// ile başlamalı" };
+  }
+
+  return { value: logoUrl };
+}
+
 // POST /api/admin/catalog/scan-prices — tüm kataloğu tarayıp fiyatları
 // Anthropic API'si ile güncel siteden çıkarmaya çalışır. Tarama dakikalar
 // sürebildiği için arka planda başlatılır ve hemen 202 dönülür; sonuç
@@ -89,11 +143,19 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "app_name ve current_price zorunludur" });
   }
 
+  const domain = parseDomain(req.body.domain);
+  const logoUrl = parseLogoUrl(req.body.logo_url);
+
+  if (domain.error || logoUrl.error) {
+    return res.status(400).json({ error: domain.error || logoUrl.error });
+  }
+
   try {
     const { rows } = await db.query(
       `insert into subscriptions_catalog
-         (app_name, plan_name, current_price, currency, source_url, category, cancel_url)
-       values ($1, $2, $3, coalesce($4, 'TRY'), $5, $6, $7)
+         (app_name, plan_name, current_price, currency, source_url, category, cancel_url,
+          domain, logo_url)
+       values ($1, $2, $3, coalesce($4, 'TRY'), $5, $6, $7, $8, $9)
        returning *`,
       [
         app_name,
@@ -103,6 +165,8 @@ router.post("/", async (req, res) => {
         source_url || null,
         category || null,
         cancel_url || null,
+        domain.value,
+        logoUrl.value,
       ]
     );
 
@@ -117,6 +181,7 @@ router.post("/", async (req, res) => {
 });
 
 // PUT /api/admin/catalog/:id — mevcut bir kaydı güncelle (gönderilmeyen alanlar korunur)
+// domain ve logo_url gönderildiğinde boş değer alanı temizler (null yapar).
 router.put("/:id", async (req, res) => {
   const {
     app_name,
@@ -140,6 +205,15 @@ router.put("/:id", async (req, res) => {
     cancel_url,
   ].map((value) => (value === undefined ? null : value));
 
+  const hasDomain = req.body.domain !== undefined;
+  const hasLogoUrl = req.body.logo_url !== undefined;
+  const domain = parseDomain(req.body.domain);
+  const logoUrl = parseLogoUrl(req.body.logo_url);
+
+  if (domain.error || logoUrl.error) {
+    return res.status(400).json({ error: domain.error || logoUrl.error });
+  }
+
   try {
     const { rows } = await db.query(
       `update subscriptions_catalog
@@ -150,10 +224,12 @@ router.put("/:id", async (req, res) => {
            source_url = coalesce($5, source_url),
            last_checked_at = coalesce($6, last_checked_at),
            category = coalesce($7, category),
-           cancel_url = coalesce($8, cancel_url)
-       where id = $9
+           cancel_url = coalesce($8, cancel_url),
+           domain = case when $9::boolean then $10 else domain end,
+           logo_url = case when $11::boolean then $12 else logo_url end
+       where id = $13
        returning *`,
-      [...params, req.params.id]
+      [...params, hasDomain, domain.value, hasLogoUrl, logoUrl.value, req.params.id]
     );
 
     if (rows.length === 0) {

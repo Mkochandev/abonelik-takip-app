@@ -5,13 +5,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import * as api from "../api/client";
 import {
-  AppTile,
   BrandIcon,
   Card,
   CategoryBadge,
   GroupedList,
   GroupedListRow,
   PillButton,
+  ServiceLogo,
 } from "../components";
 import { useAuth } from "../context/AuthContext";
 import { fontFamily, useTheme } from "../theme";
@@ -52,7 +52,7 @@ function getNextBillingInfo(billingDate) {
 
 export default function HomeScreen({ navigation }) {
   const { user, token, isAuthenticated, plan, limit } = useAuth();
-  const { colors, spacing, typography, brand, categories } = useTheme();
+  const { colors, spacing, typography, brand } = useTheme();
   const insets = useSafeAreaInsets();
   const [subscriptions, setSubscriptions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -257,7 +257,12 @@ export default function HomeScreen({ navigation }) {
                     navigation.navigate("SubscriptionDetail", { subscription: item })
                   }
                 >
-                  <AppTile name={item.app_name} color={categories[item.category]} />
+                  <ServiceLogo
+                    domain={item.domain}
+                    logoUrl={item.logo_url}
+                    name={item.app_name}
+                    category={item.category}
+                  />
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: colors.text, fontWeight: "600" }} numberOfLines={1}>
                       {item.app_name}
@@ -359,7 +364,12 @@ export default function HomeScreen({ navigation }) {
                     navigation.navigate("SubscriptionDetail", { subscription: item })
                   }
                 >
-                  <AppTile name={item.app_name} color={categories[item.category]} />
+                  <ServiceLogo
+                    domain={item.domain}
+                    logoUrl={item.logo_url}
+                    name={item.app_name}
+                    category={item.category}
+                  />
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: colors.text, fontWeight: "600" }} numberOfLines={1}>
                       {item.app_name}

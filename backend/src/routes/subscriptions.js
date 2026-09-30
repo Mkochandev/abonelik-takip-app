@@ -70,7 +70,7 @@ router.get("/", async (req, res) => {
     const { rows } = await db.query(
       `select us.id, us.started_at, us.reason, us.usage_frequency, us.price_alert_enabled,
               us.billing_date, sc.id as catalog_id, sc.app_name, sc.plan_name,
-              sc.current_price, sc.currency, sc.category
+              sc.current_price, sc.currency, sc.category, sc.domain, sc.logo_url
        from user_subscriptions us
        join subscriptions_catalog sc on sc.id = us.catalog_id
        where us.user_id = $1

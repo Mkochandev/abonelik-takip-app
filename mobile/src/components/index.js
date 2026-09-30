@@ -6,4 +6,5 @@ export { CategoryTag } from "./CategoryTag";
 export { Chip } from "./Chip";
 export { GroupedList, GroupedListRow } from "./GroupedList";
 export { PillButton } from "./PillButton";
+export { ServiceLogo } from "./ServiceLogo";
 export { Toggle } from "./Toggle";

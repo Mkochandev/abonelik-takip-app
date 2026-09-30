@@ -1,10 +1,10 @@
-import { Image, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import { fontFamily, useTheme } from "../theme";
 
-// Servis logosu gelene kadar yer tutucu: pastel zemin üstünde baş harf.
-// logoUrl verilirse aynı karonun içinde logo gösterilir.
-export function AppTile({ name = "", color, logoUrl, size = 44, style }) {
+// Pastel zemin üstünde baş harf. Logosu olmayan ya da logosu yüklenemeyen
+// servisler için ServiceLogo bu karoya düşer.
+export function AppTile({ name = "", color, size = 44, style }) {
   const { colors, radius, brand } = useTheme();
   const letter = name.trim().charAt(0).toUpperCase() || "?";
   const backgroundColor = color ?? colors.field;
@@ -24,23 +24,15 @@ export function AppTile({ name = "", color, logoUrl, size = 44, style }) {
         style,
       ]}
     >
-      {logoUrl ? (
-        <Image
-          source={{ uri: logoUrl }}
-          style={{ width: size, height: size }}
-          resizeMode="cover"
-        />
-      ) : (
-        <Text
-          style={{
-            fontFamily: fontFamily.bold,
-            fontSize: size * 0.4,
-            color: brand.ink,
-          }}
-        >
-          {letter}
-        </Text>
-      )}
+      <Text
+        style={{
+          fontFamily: fontFamily.bold,
+          fontSize: size * 0.4,
+          color: brand.ink,
+        }}
+      >
+        {letter}
+      </Text>
     </View>
   );
 }

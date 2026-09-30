@@ -4,7 +4,7 @@ import Svg, { Path } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import * as api from "../api/client";
-import { AppTile, Card, CategoryTag, GroupedList, GroupedListRow, PillButton, Toggle } from "../components";
+import { Card, CategoryTag, GroupedList, GroupedListRow, PillButton, ServiceLogo, Toggle } from "../components";
 import { useAuth } from "../context/AuthContext";
 import { fontFamily, useTheme } from "../theme";
 import { formatAmount, formatSubscriptionPrice } from "../utils/price";
@@ -27,7 +27,7 @@ function ChartUpIcon({ color }) {
 export default function SubscriptionDetailScreen({ navigation, route }) {
   const { subscription } = route.params;
   const { token } = useAuth();
-  const { colors, spacing, brand, categories } = useTheme();
+  const { colors, spacing, brand } = useTheme();
   const insets = useSafeAreaInsets();
 
   const [catalogItem, setCatalogItem] = useState(null);
@@ -113,10 +113,12 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
 
       <Card style={{ marginBottom: spacing.lg }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <AppTile
+          <ServiceLogo
+            domain={subscription.domain}
+            logoUrl={subscription.logo_url}
             name={subscription.app_name}
+            category={subscription.category}
             size={56}
-            color={categories[subscription.category]}
           />
           <View style={{ flex: 1 }}>
             <Text style={{ fontFamily: fontFamily.extraBold, fontSize: 28, color: colors.text }}>

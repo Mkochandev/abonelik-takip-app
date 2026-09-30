@@ -219,6 +219,130 @@
   a {
     color: var(--text);
   }
+
+  input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    margin: 0;
+    accent-color: var(--primary);
+  }
+
+  .logo-tile {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--field);
+    font-family: "Bricolage Grotesque", sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+  }
+
+  .logo-tile img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: var(--card);
+  }
+
+  .domain-hint {
+    color: var(--text2);
+    font-size: 12px;
+    margin-top: 2px;
+  }
+
+  .catalog-filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+
+  #missingLogoCount {
+    color: var(--text2);
+  }
+
+  .form-with-preview {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+  }
+
+  .form-with-preview > :first-child {
+    flex: 1;
+  }
+
+  .logo-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .logo-fields input {
+    flex: 1;
+    min-width: 220px;
+  }
+
+  .logo-preview {
+    display: flex;
+    gap: 8px;
+  }
+
+  .logo-preview-box {
+    width: 88px;
+    height: 88px;
+    border-radius: var(--radius-input);
+    border: 1px solid var(--divider);
+    background: #FFFFFF;
+    color: var(--text2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 11px;
+    padding: 6px;
+  }
+
+  .logo-preview-box.dark {
+    background: #15131A;
+    border-color: #15131A;
+    color: #A9A5B0;
+  }
+
+  .logo-preview-box img {
+    width: 56px;
+    height: 56px;
+    object-fit: contain;
+    border-radius: 12px;
+  }
+
+  .form-error {
+    color: var(--danger);
+    font-size: 14px;
+    font-weight: 600;
+    margin-top: 8px;
+  }
+
+  .form-error:empty {
+    display: none;
+  }
+
+  tr.edit-logo-row td {
+    padding-top: 0;
+  }
+
+  tr.editing td {
+    border-bottom: none;
+  }
 </style>
 </head>
 <body>
@@ -252,23 +376,38 @@
 
     <div class="card">
       <h2>Yeni Ekle</h2>
-      <form id="newForm">
-        <input id="newAppName" placeholder="app_name" required />
-        <input id="newPlanName" placeholder="plan_name" />
-        <input id="newPrice" type="number" step="0.01" placeholder="current_price" required />
-        <input id="newCurrency" placeholder="currency (örn. TRY)" />
-        <select id="newCategory"></select>
-        <input id="newSourceUrl" placeholder="source_url" />
-        <input id="newCancelUrl" placeholder="İptal URL" />
-        <button type="submit">Ekle</button>
-      </form>
+      <div class="form-with-preview">
+        <form id="newForm">
+          <input id="newAppName" placeholder="app_name" required />
+          <input id="newPlanName" placeholder="plan_name" />
+          <input id="newPrice" type="number" step="0.01" placeholder="current_price" required />
+          <input id="newCurrency" placeholder="currency (örn. TRY)" />
+          <select id="newCategory"></select>
+          <input id="newSourceUrl" placeholder="source_url" />
+          <input id="newCancelUrl" placeholder="İptal URL" />
+          <input id="newDomain" placeholder="Alan adı (örn. netflix.com)" />
+          <input id="newLogoUrl" placeholder="Logo URL (opsiyonel, alan adını geçersiz kılar)" />
+          <button type="submit">Ekle</button>
+        </form>
+        <div class="logo-preview">
+          <div class="logo-preview-box" id="newPreviewLight"></div>
+          <div class="logo-preview-box dark" id="newPreviewDark"></div>
+        </div>
+      </div>
+      <div class="form-error" id="newFormError"></div>
     </div>
 
     <div class="card">
       <h2>Katalog</h2>
+      <label class="catalog-filter">
+        <input id="missingLogoFilter" type="checkbox" />
+        Sadece logosu eksikler
+        <span id="missingLogoCount"></span>
+      </label>
       <table>
         <thead>
           <tr>
+            <th></th>
             <th>app_name</th>
             <th>plan_name</th>
             <th>current_price</th>
@@ -288,6 +427,7 @@
 
   <script>
     const API_BASE = "/api/admin/catalog";
+    const CONFIG_URL = "/api/admin/config";
     const CATEGORIES = [
       "Video/Dizi-Film",
       "Müzik",
@@ -297,9 +437,22 @@
       "Üretkenlik/Tasarım",
       "Spor",
     ];
+    // Mobil uygulamadaki kategori pastelleri (baş harf karosu zemini).
+    const CATEGORY_COLORS = {
+      "Video/Dizi-Film": "#D7D2FB",
+      "Müzik": "#F9D0E6",
+      "Kitap/Sesli Kitap": "#FFD9B8",
+      "Yapay Zeka": "#C6EEDF",
+      "Bulut Depolama": "#CFE5FB",
+      "Üretkenlik/Tasarım": "#FBE7A8",
+      "Spor": "#FFD0CC",
+    };
+    const LOGO_PREVIEW_DEBOUNCE_MS = 400;
     let adminSecret = sessionStorage.getItem("adminSecret") || "";
     let catalogCache = [];
     let editingId = null;
+    let logodevKey = "";
+    let onlyMissingLogo = false;
 
     function categoryOptionsHtml(selected) {
       const emptyOption = `<option value="" ${!selected ? "selected" : ""}>—</option>`;
@@ -335,8 +488,8 @@
       mainSection.style.display = "none";
     }
 
-    async function apiRequest(path, options = {}) {
-      const response = await fetch(API_BASE + path, {
+    async function apiRequest(path, options = {}, base = API_BASE) {
+      const response = await fetch(base + path, {
         ...options,
         headers: {
           "Content-Type": "application/json",
@@ -376,10 +529,129 @@
       }
     }
 
+    // Logo.dev anahtarı alınamazsa alan adından logo üretilemez; liste baş
+    // harf karolarıyla çalışmaya devam eder.
+    async function loadConfig() {
+      try {
+        const config = await apiRequest("", { method: "GET" }, CONFIG_URL);
+        logodevKey = config.logodevKey || "";
+      } catch (err) {
+        logodevKey = "";
+      }
+    }
+
+    // Backend'deki parseDomain ile aynı temizlik; önizleme kaydedilecek
+    // alan adını göstersin diye.
+    function normalizeDomain(value) {
+      return String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/^https?:\/\//, "")
+        .replace(/^www\./, "")
+        .replace(/[/?#].*$/, "");
+    }
+
+    function logodevUrl(domain, size, theme) {
+      if (!domain || !logodevKey) return null;
+
+      return (
+        `https://img.logo.dev/${encodeURIComponent(domain)}` +
+        `?token=${encodeURIComponent(logodevKey)}&size=${size}&format=png&fallback=404` +
+        (theme ? `&theme=${theme}` : "")
+      );
+    }
+
+    function isMissingLogo(item) {
+      return !item.domain && !item.logo_url;
+    }
+
+    // Baş harf karosu her zaman altta durur; görsel yüklenirse üstünü
+    // kapatır, yüklenemezse kaldırılır ve karo görünür kalır.
+    function logoTileHtml(item) {
+      const src = item.logo_url || logodevUrl(item.domain, 80);
+      const letter = (item.app_name || "").trim().charAt(0).toUpperCase() || "?";
+      const color = CATEGORY_COLORS[item.category] || "var(--field)";
+      const image = src ? `<img src="${escapeHtml(src)}" alt="" loading="lazy" />` : "";
+
+      return `<div class="logo-tile" style="background: ${color}">${escapeHtml(letter)}${image}</div>`;
+    }
+
+    function renderLogoPreview(prefix) {
+      const domainInput = document.getElementById(`${prefix}Domain`);
+      const logoUrlInput = document.getElementById(`${prefix}LogoUrl`);
+      if (!domainInput || !logoUrlInput) return;
+
+      const domain = normalizeDomain(domainInput.value);
+      const logoUrl = logoUrlInput.value.trim();
+
+      for (const [suffix, theme] of [["Light", null], ["Dark", "dark"]]) {
+        const box = document.getElementById(`${prefix}Preview${suffix}`);
+        box.textContent = "";
+
+        if (!domain && !logoUrl) {
+          box.textContent = "Önizleme";
+          continue;
+        }
+
+        if (!logoUrl && !logodevKey) {
+          box.textContent = "Logo.dev anahtarı yok";
+          continue;
+        }
+
+        const src = logoUrl
+          ? logoUrl.startsWith("https://") ? logoUrl : null
+          : logodevUrl(domain, 128, theme);
+
+        if (!src) {
+          box.textContent = "Logo bulunamadı";
+          continue;
+        }
+
+        const image = document.createElement("img");
+        image.alt = "";
+        image.addEventListener("error", () => {
+          if (image.parentNode === box) {
+            box.textContent = "Logo bulunamadı";
+          }
+        });
+        image.src = src;
+        box.appendChild(image);
+      }
+    }
+
+    // Her tuş vuruşunda Logo.dev'e istek atmamak için önizleme geciktirilir.
+    const logoPreviewTimers = {};
+
+    function scheduleLogoPreview(prefix) {
+      clearTimeout(logoPreviewTimers[prefix]);
+      logoPreviewTimers[prefix] = setTimeout(
+        () => renderLogoPreview(prefix),
+        LOGO_PREVIEW_DEBOUNCE_MS
+      );
+    }
+
+    function setFormError(id, message) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.textContent = message || "";
+      }
+    }
+
     function renderTable() {
       catalogBody.innerHTML = "";
 
-      for (const item of catalogCache) {
+      const missingCount = catalogCache.filter(isMissingLogo).length;
+      document.getElementById("missingLogoCount").textContent = `(${missingCount} eksik)`;
+
+      const visibleItems = onlyMissingLogo ? catalogCache.filter(isMissingLogo) : catalogCache;
+
+      if (visibleItems.length === 0) {
+        catalogBody.innerHTML = `<tr><td colspan="9">${
+          onlyMissingLogo ? "Logosu eksik kayıt yok." : "Kayıt yok."
+        }</td></tr>`;
+      }
+
+      for (const item of visibleItems) {
         const row = document.createElement("tr");
         const isEditing = editingId === item.id;
 
@@ -403,8 +675,15 @@
           ? `<a href="${escapeHtml(item.cancel_url)}" target="_blank" rel="noopener">link</a>`
           : "—";
 
+        const domainHint =
+          !isEditing && (item.logo_url || item.domain)
+            ? `<div class="domain-hint">${item.logo_url ? "özel logo" : escapeHtml(item.domain)}</div>`
+            : "";
+
+        row.className = isEditing ? "editing" : "";
         row.innerHTML = `
-          <td>${escapeHtml(item.app_name)}</td>
+          <td>${logoTileHtml(item)}</td>
+          <td>${escapeHtml(item.app_name)}${domainHint}</td>
           <td>${escapeHtml(item.plan_name || "")}</td>
           <td>${priceCell} ${!isEditing ? escapeHtml(item.currency) : ""}</td>
           <td>${escapeHtml(item.currency)}</td>
@@ -415,7 +694,31 @@
         `;
 
         catalogBody.appendChild(row);
+
+        if (isEditing) {
+          const logoRow = document.createElement("tr");
+          logoRow.className = "edit-logo-row";
+          logoRow.innerHTML = `
+            <td></td>
+            <td colspan="8">
+              <div class="form-with-preview">
+                <div class="logo-fields">
+                  <input id="editDomain" placeholder="Alan adı (örn. netflix.com)" value="${escapeHtml(item.domain || "")}" />
+                  <input id="editLogoUrl" placeholder="Logo URL (opsiyonel, alan adını geçersiz kılar)" value="${escapeHtml(item.logo_url || "")}" />
+                </div>
+                <div class="logo-preview">
+                  <div class="logo-preview-box" id="editPreviewLight"></div>
+                  <div class="logo-preview-box dark" id="editPreviewDark"></div>
+                </div>
+              </div>
+              <div class="form-error" id="editFormError"></div>
+            </td>
+          `;
+          catalogBody.appendChild(logoRow);
+        }
       }
+
+      renderLogoPreview("edit");
     }
 
     function escapeHtml(value) {
@@ -455,6 +758,8 @@
         const newPrice = document.getElementById("editPriceInput").value;
         const newCategory = document.getElementById("editCategoryInput").value;
         const newCancelUrl = document.getElementById("editCancelUrlInput").value.trim();
+        const newDomain = document.getElementById("editDomain").value.trim();
+        const newLogoUrl = document.getElementById("editLogoUrl").value.trim();
 
         try {
           await apiRequest(`/${id}`, {
@@ -463,16 +768,45 @@
               current_price: newPrice,
               category: newCategory || null,
               cancel_url: newCancelUrl || null,
+              domain: newDomain,
+              logo_url: newLogoUrl,
             }),
           });
           editingId = null;
-          setStatus("Fiyat güncellendi.", "ok");
+          setStatus("Kayıt güncellendi.", "ok");
           await loadCatalog();
         } catch (err) {
-          setStatus(err.message, "error");
+          setFormError("editFormError", err.message);
         }
       }
     });
+
+    // Yüklenemeyen liste logoları kaldırılır; altındaki baş harf karosu
+    // görünür. "error" olayı yukarı taşmadığı için capture ile dinlenir.
+    catalogBody.addEventListener(
+      "error",
+      (event) => {
+        if (event.target.tagName === "IMG" && event.target.closest(".logo-tile")) {
+          event.target.remove();
+        }
+      },
+      true
+    );
+
+    catalogBody.addEventListener("input", (event) => {
+      if (event.target.id === "editDomain" || event.target.id === "editLogoUrl") {
+        scheduleLogoPreview("edit");
+      }
+    });
+
+    document.getElementById("missingLogoFilter").addEventListener("change", (event) => {
+      onlyMissingLogo = event.target.checked;
+      renderTable();
+    });
+
+    document.getElementById("newDomain").addEventListener("input", () => scheduleLogoPreview("new"));
+    document.getElementById("newLogoUrl").addEventListener("input", () => scheduleLogoPreview("new"));
+    renderLogoPreview("new");
 
     newForm.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -485,16 +819,20 @@
         category: document.getElementById("newCategory").value || undefined,
         source_url: document.getElementById("newSourceUrl").value.trim() || undefined,
         cancel_url: document.getElementById("newCancelUrl").value.trim() || undefined,
+        domain: document.getElementById("newDomain").value.trim() || undefined,
+        logo_url: document.getElementById("newLogoUrl").value.trim() || undefined,
       };
 
       try {
         await apiRequest("", { method: "POST", body: JSON.stringify(body) });
         newForm.reset();
         document.getElementById("newCategory").value = "";
+        setFormError("newFormError", "");
+        renderLogoPreview("new");
         setStatus("Kayıt eklendi.", "ok");
         await loadCatalog();
       } catch (err) {
-        setStatus(err.message, "error");
+        setFormError("newFormError", err.message);
       }
     });
 
@@ -593,6 +931,7 @@
         await apiRequest("", { method: "GET" });
         sessionStorage.setItem("adminSecret", adminSecret);
         showAuthenticated();
+        await loadConfig();
         await loadCatalog();
         resumeScanIfRunning();
       } catch (err) {
@@ -602,7 +941,7 @@
 
     if (adminSecret) {
       showAuthenticated();
-      loadCatalog();
+      loadConfig().then(loadCatalog);
       resumeScanIfRunning();
     } else {
       showLoggedOut();

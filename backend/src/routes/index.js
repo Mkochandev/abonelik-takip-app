@@ -1,6 +1,7 @@
 const express = require("express");
 
 const adminRoutes = require("./admin");
+const adminConfigRoutes = require("./adminConfig");
 const authRoutes = require("./auth");
 const catalogRoutes = require("./catalog");
 const subscriptionsRoutes = require("./subscriptions");
@@ -18,6 +19,7 @@ router.use("/catalog", catalogRoutes);
 router.use("/user/subscriptions", subscriptionsRoutes);
 router.use("/user/plan", userPlanRoutes);
 router.use("/admin/catalog", adminRoutes);
+router.use("/admin/config", adminConfigRoutes);
 router.use("/webhooks", webhooksRoutes);
 
 module.exports = router;

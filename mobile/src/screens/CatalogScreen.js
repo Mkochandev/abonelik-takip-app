@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -14,7 +15,7 @@ import Svg, { Circle, Line } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import * as api from "../api/client";
-import { AppTile, Card, Chip, PillButton, Toggle } from "../components";
+import { Card, Chip, PillButton, ServiceLogo, Toggle } from "../components";
 import { useAuth } from "../context/AuthContext";
 import { fontFamily, useTheme } from "../theme";
 import { formatSubscriptionPrice } from "../utils/price";
@@ -65,7 +66,7 @@ function SearchIcon({ color }) {
 
 export default function CatalogScreen({ navigation }) {
   const { token, isAuthenticated, plan: userPlan, limit } = useAuth();
-  const { colors, spacing, radius, typography, pillRadius, categories } = useTheme();
+  const { colors, spacing, radius, typography, pillRadius } = useTheme();
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -359,6 +360,20 @@ export default function CatalogScreen({ navigation }) {
               Sonuç bulunamadı
             </Text>
           }
+          ListFooterComponent={
+            <Text
+              onPress={() => Linking.openURL("https://logo.dev")}
+              style={{
+                color: colors.text2,
+                fontSize: 11,
+                textAlign: "center",
+                opacity: 0.7,
+                marginTop: spacing.sm,
+              }}
+            >
+              Logolar: Logo.dev
+            </Text>
+          }
           renderItem={({ item }) => {
             const isExpanded = expandedApp === item.app_name;
 
@@ -373,7 +388,12 @@ export default function CatalogScreen({ navigation }) {
                     gap: spacing.sm,
                   }}
                 >
-                  <AppTile name={item.app_name} color={categories[item.plans[0]?.category]} />
+                  <ServiceLogo
+                    domain={item.domain}
+                    logoUrl={item.logo_url}
+                    name={item.app_name}
+                    category={item.plans[0]?.category}
+                  />
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 16, fontWeight: "600", color: colors.text }}>
                       {item.app_name}
@@ -497,9 +517,11 @@ export default function CatalogScreen({ navigation }) {
                   marginBottom: spacing.lg,
                 }}
               >
-                <AppTile
+                <ServiceLogo
+                  domain={reasonPlan.domain}
+                  logoUrl={reasonPlan.logo_url}
                   name={reasonPlan.app_name}
-                  color={categories[reasonPlan.category]}
+                  category={reasonPlan.category}
                   size={52}
                 />
                 <View>
