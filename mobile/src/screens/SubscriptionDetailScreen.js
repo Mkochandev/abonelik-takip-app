@@ -26,6 +26,9 @@ function ChartUpIcon({ color }) {
 
 export default function SubscriptionDetailScreen({ navigation, route }) {
   const { subscription } = route.params;
+  // Misafir kaydı yalnızca katalog bilgisini taşır; hesaba bağlı alanlar
+  // (neden, sıklık, ödeme günü, zam bildirimi) gösterilmez.
+  const isGuest = Boolean(subscription.isGuest);
   const { token } = useAuth();
   const { colors, spacing, brand } = useTheme();
   const insets = useSafeAreaInsets();
@@ -151,28 +154,51 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
         ) : null}
       </Card>
 
-      <GroupedList style={{ marginBottom: spacing.lg }}>
-        <GroupedListRow style={{ justifyContent: "space-between" }}>
-          <Text style={{ color: colors.text2 }}>Kullanım sıklığı</Text>
-          <Text style={{ color: colors.text, fontWeight: "600" }}>
-            {subscription.usage_frequency || "—"}
-          </Text>
-        </GroupedListRow>
-        <GroupedListRow style={{ justifyContent: "space-between" }}>
-          <Text style={{ color: colors.text2 }}>Ödeme günü</Text>
-          <Text style={{ color: colors.text, fontWeight: "600" }}>
-            {subscription.billing_date
-              ? `Her ayın ${withAccusativeSuffix(subscription.billing_date)}`
-              : "—"}
-          </Text>
-        </GroupedListRow>
-        <GroupedListRow style={{ justifyContent: "space-between" }}>
-          <Text style={{ color: colors.text2 }}>Neden</Text>
-          <Text style={{ color: colors.text, fontWeight: "600", flexShrink: 1, textAlign: "right" }}>
-            {subscription.reason || "—"}
-          </Text>
-        </GroupedListRow>
-      </GroupedList>
+      {isGuest ? (
+        <GroupedList style={{ marginBottom: spacing.lg }}>
+          <GroupedListRow
+            onPress={() =>
+              navigation.navigate("Register", {
+                promptMessage: "Hatırlatma ve zam bildirimi için hesap oluştur",
+              })
+            }
+            style={{ justifyContent: "space-between" }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontWeight: "600" }}>
+                Bu özellikler için hesap oluştur
+              </Text>
+              <Text style={{ color: colors.text2, fontSize: 13, marginTop: 2 }}>
+                Neden, kullanım sıklığı, ödeme günü ve zam bildirimi
+              </Text>
+            </View>
+            <Text style={{ color: colors.text2, fontSize: 18 }}>›</Text>
+          </GroupedListRow>
+        </GroupedList>
+      ) : (
+        <GroupedList style={{ marginBottom: spacing.lg }}>
+          <GroupedListRow style={{ justifyContent: "space-between" }}>
+            <Text style={{ color: colors.text2 }}>Kullanım sıklığı</Text>
+            <Text style={{ color: colors.text, fontWeight: "600" }}>
+              {subscription.usage_frequency || "—"}
+            </Text>
+          </GroupedListRow>
+          <GroupedListRow style={{ justifyContent: "space-between" }}>
+            <Text style={{ color: colors.text2 }}>Ödeme günü</Text>
+            <Text style={{ color: colors.text, fontWeight: "600" }}>
+              {subscription.billing_date
+                ? `Her ayın ${withAccusativeSuffix(subscription.billing_date)}`
+                : "—"}
+            </Text>
+          </GroupedListRow>
+          <GroupedListRow style={{ justifyContent: "space-between" }}>
+            <Text style={{ color: colors.text2 }}>Neden</Text>
+            <Text style={{ color: colors.text, fontWeight: "600", flexShrink: 1, textAlign: "right" }}>
+              {subscription.reason || "—"}
+            </Text>
+          </GroupedListRow>
+        </GroupedList>
+      )}
 
       <Card style={{ marginBottom: spacing.lg }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md }}>
@@ -221,14 +247,16 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
         )}
       </Card>
 
-      <Card style={{ marginBottom: spacing.lg }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <Text style={{ fontFamily: fontFamily.bold, fontSize: 16, color: colors.text }}>
-            Zam olursa haber ver
-          </Text>
-          <Toggle value={priceAlertEnabled} onValueChange={handleToggleAlert} disabled={savingAlert} />
-        </View>
-      </Card>
+      {!isGuest ? (
+        <Card style={{ marginBottom: spacing.lg }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <Text style={{ fontFamily: fontFamily.bold, fontSize: 16, color: colors.text }}>
+              Zam olursa haber ver
+            </Text>
+            <Toggle value={priceAlertEnabled} onValueChange={handleToggleAlert} disabled={savingAlert} />
+          </View>
+        </Card>
+      ) : null}
 
       {catalogItem?.cancel_url ? (
         <View>

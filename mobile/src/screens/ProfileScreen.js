@@ -4,11 +4,38 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Card, GroupedList, GroupedListRow, PillButton } from "../components";
 import { useAuth } from "../context/AuthContext";
+import { clearGuestSubscriptions } from "../storage/guestSubscriptions";
+import { resetOnboarding } from "../storage/onboarding";
 import { fontFamily, useTheme } from "../theme";
+import { buildOnboardingRoute } from "./onboarding/steps";
 
 const PRIVACY_URL = "https://abonelik-api.gaziustam.com/privacy.html";
 const TERMS_URL = "https://abonelik-api.gaziustam.com/terms.html";
 const MANAGE_SUBSCRIPTION_URL = "https://apps.apple.com/account/subscriptions";
+
+// Yalnızca __DEV__: onboarding bayrağını, taslağı ve misafir listesini
+// silip uygulamayı onboarding'in başına döndürür.
+function DevResetOnboardingButton({ navigation }) {
+  const { spacing } = useTheme();
+
+  if (!__DEV__) {
+    return null;
+  }
+
+  async function handlePress() {
+    await Promise.all([resetOnboarding(), clearGuestSubscriptions()]).catch(() => {});
+    navigation.getParent()?.reset({ index: 0, routes: [buildOnboardingRoute(null)] });
+  }
+
+  return (
+    <PillButton
+      title="Onboarding'i sıfırla (dev)"
+      variant="outline"
+      onPress={handlePress}
+      style={{ marginTop: spacing.lg }}
+    />
+  );
+}
 
 export default function ProfileScreen({ navigation }) {
   const { user, isAuthenticated, plan, logout, deleteAccount } = useAuth();
@@ -33,8 +60,9 @@ export default function ProfileScreen({ navigation }) {
 
         <Card>
           <Text style={[typography.sectionTitle, { color: colors.text }]}>Hesabın yok mu?</Text>
-          <Text style={{ color: colors.text2, marginTop: spacing.sm }}>
-            Aboneliklerini takip edebilmek için giriş yap ya da hesap oluştur.
+          <Text style={{ color: colors.text2, marginTop: spacing.sm, lineHeight: 21 }}>
+            Aboneliklerin şu an sadece bu cihazda. Hesap oluşturursan kaybolmaz ve zam olduğunda
+            haber veririz.
           </Text>
 
           <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
@@ -63,6 +91,8 @@ export default function ProfileScreen({ navigation }) {
             <Text style={{ color: colors.text2, fontSize: 18 }}>›</Text>
           </GroupedListRow>
         </GroupedList>
+
+        <DevResetOnboardingButton navigation={navigation} />
       </ScrollView>
     );
   }
@@ -141,6 +171,8 @@ export default function ProfileScreen({ navigation }) {
 
       <PillButton title="Çıkış yap" variant="outline" onPress={logout} style={{ marginBottom: spacing.sm }} />
       <PillButton title="Hesabımı sil" variant="danger" onPress={() => setConfirmVisible(true)} />
+
+      <DevResetOnboardingButton navigation={navigation} />
 
       <Modal
         visible={confirmVisible}

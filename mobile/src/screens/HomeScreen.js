@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,14 +8,35 @@ import {
   BrandIcon,
   Card,
   CategoryBadge,
+  Chip,
   GroupedList,
   GroupedListRow,
   PillButton,
   ServiceLogo,
 } from "../components";
 import { useAuth } from "../context/AuthContext";
+import { GUEST_LIMIT, getGuestSubscriptions } from "../storage/guestSubscriptions";
+import { dismissGuestBanner, shouldShowGuestBanner } from "../storage/onboarding";
 import { fontFamily, useTheme } from "../theme";
+import { indexCatalogPlans } from "../utils/catalog";
 import { formatSubscriptionPrice, formatTRY } from "../utils/price";
+
+// Misafir listesi yalnızca catalog_id tutar; ad, fiyat, logo ve kategori
+// her seferinde güncel katalogdan eklenir. Katalogdan kaldırılmış kayıtlar
+// gösterilmez.
+async function loadGuestSubscriptions() {
+  const [items, data] = await Promise.all([getGuestSubscriptions(), api.getCatalog()]);
+  const plans = indexCatalogPlans(data.catalog);
+
+  return items
+    .filter((item) => plans.has(item.catalog_id))
+    .map((item) => ({
+      ...plans.get(item.catalog_id),
+      id: item.catalog_id,
+      added_at: item.added_at,
+      isGuest: true,
+    }));
+}
 
 // [a, b, c] -> [[a, b], [c]]
 function chunkPairs(items) {
@@ -51,31 +72,42 @@ function getNextBillingInfo(billingDate) {
 }
 
 export default function HomeScreen({ navigation }) {
-  const { user, token, isAuthenticated, plan, limit } = useAuth();
+  const { user, token, isAuthenticated, plan, limit, pendingPaywall, consumePendingPaywall } =
+    useAuth();
   const { colors, spacing, typography, brand } = useTheme();
   const insets = useSafeAreaInsets();
   const [subscriptions, setSubscriptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showGuestBanner, setShowGuestBanner] = useState(false);
   const scrollRef = useRef(null);
   const subsSectionY = useRef(0);
 
+  // Açılışta misafir listesi aktarılırken limite takılındıysa Paywall'ı aç.
+  useEffect(() => {
+    if (pendingPaywall) {
+      consumePendingPaywall();
+      navigation.navigate("Paywall");
+    }
+  }, [pendingPaywall]);
+
   useFocusEffect(
     useCallback(() => {
-      if (!token) {
-        setLoading(false);
-        return;
-      }
-
       let isActive = true;
+
+      if (!token) {
+        shouldShowGuestBanner().then((show) => isActive && setShowGuestBanner(show));
+      }
 
       async function fetchSubscriptions() {
         setLoading(true);
         setError(null);
         try {
-          const data = await api.getUserSubscriptions(token);
+          const next = token
+            ? (await api.getUserSubscriptions(token)).subscriptions
+            : await loadGuestSubscriptions();
           if (isActive) {
-            setSubscriptions(data.subscriptions);
+            setSubscriptions(next);
           }
         } catch (err) {
           if (isActive) {
@@ -95,46 +127,6 @@ export default function HomeScreen({ navigation }) {
       };
     }, [token])
   );
-
-  if (!isAuthenticated) {
-    return (
-      <ScrollView
-        style={{ flex: 1, backgroundColor: colors.bg }}
-        contentContainerStyle={{
-          padding: spacing.md,
-          paddingTop: insets.top + spacing.sm,
-          paddingBottom: spacing.xl,
-        }}
-      >
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            marginBottom: spacing.lg,
-          }}
-        >
-          <Text style={[typography.screenTitle, { color: colors.text }]}>Merhaba</Text>
-          <BrandIcon size={40} />
-        </View>
-
-        <Card>
-          <Text style={[typography.sectionTitle, { color: colors.text }]}>
-            Aboneliklerini tek yerde takip et
-          </Text>
-
-          <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
-            <PillButton title="Kayıt ol" onPress={() => navigation.navigate("Register")} />
-            <PillButton
-              title="Giriş yap"
-              variant="outline"
-              onPress={() => navigation.navigate("Login")}
-            />
-          </View>
-        </Card>
-      </ScrollView>
-    );
-  }
 
   const totalTry = subscriptions.reduce(
     (sum, sub) => sum + Number(sub.current_price_try ?? sub.current_price),
@@ -164,6 +156,11 @@ export default function HomeScreen({ navigation }) {
     scrollRef.current?.scrollTo({ y: subsSectionY.current, animated: true });
   }
 
+  function handleDismissGuestBanner() {
+    setShowGuestBanner(false);
+    dismissGuestBanner().catch(() => {});
+  }
+
   return (
     <ScrollView
       ref={scrollRef}
@@ -185,13 +182,51 @@ export default function HomeScreen({ navigation }) {
         <View>
           <Text style={[typography.screenTitle, { color: colors.text }]}>Merhaba</Text>
           <Text style={{ color: colors.text2, fontSize: 14, marginTop: 2 }}>
-            {user?.email}
+            {isAuthenticated ? user?.email : "Misafir"}
           </Text>
         </View>
         <BrandIcon size={40} />
       </View>
 
-      {plan === "free" && limit != null ? (
+      {!isAuthenticated && showGuestBanner ? (
+        <Card style={{ marginBottom: spacing.lg }}>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm }}>
+            <Text style={{ flex: 1, color: colors.text, fontWeight: "600", lineHeight: 21 }}>
+              Abonelikler sadece bu cihazda. Kaybolmaması ve zam bildirimi için hesap oluştur.
+            </Text>
+            <Pressable
+              onPress={handleDismissGuestBanner}
+              accessibilityRole="button"
+              accessibilityLabel="Kapat"
+              hitSlop={12}
+            >
+              <Text style={{ color: colors.text2, fontSize: 20, lineHeight: 22 }}>×</Text>
+            </Pressable>
+          </View>
+          <Chip
+            label="Hesap oluştur"
+            onPress={() => navigation.navigate("Register")}
+            style={{ alignSelf: "flex-start", marginTop: spacing.md }}
+          />
+        </Card>
+      ) : null}
+
+      {!isAuthenticated ? (
+        <Pressable
+          onPress={() => navigation.navigate("GuestLimit")}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: spacing.lg,
+          }}
+        >
+          <Text style={{ color: colors.text2, fontSize: 13 }}>
+            {subscriptions.length} / {GUEST_LIMIT} abonelik
+          </Text>
+          <Text style={{ color: colors.text, fontWeight: "700", fontSize: 13 }}>Sınırsız ol</Text>
+        </Pressable>
+      ) : plan === "free" && limit != null ? (
         <Pressable
           onPress={() => navigation.navigate("Paywall")}
           style={{

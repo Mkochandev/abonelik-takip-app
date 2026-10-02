@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -11,24 +11,21 @@ import {
   TextInput,
   View,
 } from "react-native";
-import Svg, { Circle, Line } from "react-native-svg";
+import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import * as api from "../api/client";
-import { Card, Chip, PillButton, ServiceLogo, Toggle } from "../components";
+import { Card, Chip, PillButton, SearchField, ServiceLogo, Toggle, useToast } from "../components";
+import { CATEGORIES } from "../config/categories";
 import { useAuth } from "../context/AuthContext";
+import {
+  GUEST_LIMIT,
+  addGuestSubscription,
+  getGuestSubscriptions,
+  removeGuestSubscription,
+} from "../storage/guestSubscriptions";
 import { fontFamily, useTheme } from "../theme";
 import { formatSubscriptionPrice } from "../utils/price";
-
-const CATEGORIES = [
-  "Video/Dizi-Film",
-  "Müzik",
-  "Kitap/Sesli Kitap",
-  "Yapay Zeka",
-  "Bulut Depolama",
-  "Üretkenlik/Tasarım",
-  "Spor",
-];
 
 const REASON_OPTIONS = {
   "Video/Dizi-Film": [
@@ -55,26 +52,19 @@ const REASON_OPTIONS = {
 
 const USAGE_FREQUENCIES = ["Her gün", "Haftada birkaç", "Nadiren"];
 
-function SearchIcon({ color }) {
-  return (
-    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-      <Circle cx={10} cy={10} r={7} stroke={color} strokeWidth={1.8} />
-      <Line x1={15} y1={15} x2={21} y2={21} stroke={color} strokeWidth={1.8} strokeLinecap="round" />
-    </Svg>
-  );
-}
-
 export default function CatalogScreen({ navigation }) {
   const { token, isAuthenticated, plan: userPlan, limit } = useAuth();
-  const { colors, spacing, radius, typography, pillRadius } = useTheme();
+  const { colors, spacing, radius, typography } = useTheme();
   const insets = useSafeAreaInsets();
+  const [toast, showToast] = useToast();
   const [query, setQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [catalog, setCatalog] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedApp, setExpandedApp] = useState(null);
-  // catalog_id -> o kaydın user_subscriptions.id'si (henüz seçilmemişse yok)
+  // catalog_id -> o kaydın user_subscriptions.id'si (henüz seçilmemişse yok).
+  // Misafirde değer catalog_id'nin kendisidir (yerel listede ayrı id yok).
   const [selections, setSelections] = useState({});
   const [pendingPlanId, setPendingPlanId] = useState(null);
   const [reasonPlan, setReasonPlan] = useState(null);
@@ -83,7 +73,6 @@ export default function CatalogScreen({ navigation }) {
   const [usageFrequency, setUsageFrequency] = useState(null);
   const [billingDate, setBillingDate] = useState("");
   const [priceAlertEnabled, setPriceAlertEnabled] = useState(true);
-  const [pendingAuthPlan, setPendingAuthPlan] = useState(null);
   const [pendingPaywallPlan, setPendingPaywallPlan] = useState(null);
 
   useEffect(() => {
@@ -95,23 +84,17 @@ export default function CatalogScreen({ navigation }) {
     return () => clearTimeout(timeoutId);
   }, [query, selectedCategory]);
 
-  useEffect(() => {
-    if (!token) {
-      setSelections({});
-      return;
-    }
-    fetchMySubscriptions();
-  }, [token]);
-
-  // Misafir "Seç"e basıp giriş/kayıt olduğunda, bıraktığı yerden devam
-  // etsin diye seçtiği planı hatırlıyoruz ve giriş tamamlanınca neden
-  // penceresini otomatik açıyoruz.
-  useEffect(() => {
-    if (isAuthenticated && pendingAuthPlan) {
-      startReasonFlow(pendingAuthPlan);
-      setPendingAuthPlan(null);
-    }
-  }, [isAuthenticated]);
+  // Seçim durumu her odaklanmada tazelenir: misafir listesi onboarding ya da
+  // hesaba aktarım ile, sunucu listesi giriş/çıkışla değişmiş olabilir.
+  useFocusEffect(
+    useCallback(() => {
+      if (token) {
+        fetchMySubscriptions();
+      } else {
+        loadGuestSelections();
+      }
+    }, [token])
+  );
 
   // Paywall'dan premium olarak dönüldüğünde, sınıra takıldığı için
   // yarım kalan seçim akışını kaldığı yerden devam ettirir.
@@ -150,6 +133,11 @@ export default function CatalogScreen({ navigation }) {
     }
   }
 
+  async function loadGuestSelections() {
+    const items = await getGuestSubscriptions();
+    setSelections(Object.fromEntries(items.map((item) => [item.catalog_id, item.catalog_id])));
+  }
+
   function toggleApp(appName) {
     setExpandedApp((current) => (current === appName ? null : appName));
   }
@@ -171,13 +159,12 @@ export default function CatalogScreen({ navigation }) {
       return;
     }
 
-    if (!isAuthenticated) {
-      setPendingAuthPlan({ ...plan, app_name: appName });
-      navigation.navigate("Login", { promptMessage: "Aboneliğini eklemek için giriş yap" });
+    if (!isAuthenticated && Object.keys(selections).length >= GUEST_LIMIT) {
+      navigation.navigate("GuestLimit");
       return;
     }
 
-    if (userPlan === "free" && limit != null && Object.keys(selections).length >= limit) {
+    if (isAuthenticated && userPlan === "free" && limit != null && Object.keys(selections).length >= limit) {
       setPendingPaywallPlan({ ...plan, app_name: appName });
       navigation.navigate("Paywall");
       return;
@@ -189,7 +176,11 @@ export default function CatalogScreen({ navigation }) {
   async function removePlan(plan, subscriptionId) {
     setPendingPlanId(plan.id);
     try {
-      await api.removeUserSubscription(token, subscriptionId);
+      if (isAuthenticated) {
+        await api.removeUserSubscription(token, subscriptionId);
+      } else {
+        await removeGuestSubscription(plan.id);
+      }
       setSelections((current) => {
         const next = { ...current };
         delete next[plan.id];
@@ -219,6 +210,34 @@ export default function CatalogScreen({ navigation }) {
     } finally {
       setPendingPlanId(null);
     }
+  }
+
+  // Misafir: plan yalnızca bu cihazdaki listeye eklenir.
+  async function addGuestPlan() {
+    const plan = reasonPlan;
+    if (!plan) {
+      return;
+    }
+    setReasonPlan(null);
+
+    try {
+      const result = await addGuestSubscription(plan.id);
+      if (result.reason === "limit") {
+        navigation.navigate("GuestLimit");
+        return;
+      }
+      setSelections((current) => ({ ...current, [plan.id]: plan.id }));
+      showToast(`${plan.app_name} eklendi`);
+    } catch (err) {
+      Alert.alert("Hata", err.message);
+    }
+  }
+
+  function handleCreateAccountPress() {
+    setReasonPlan(null);
+    navigation.navigate("Register", {
+      promptMessage: "Hatırlatma ve zam bildirimi için hesap oluştur",
+    });
   }
 
   function handleSave() {
@@ -301,28 +320,7 @@ export default function CatalogScreen({ navigation }) {
         Katalog
       </Text>
 
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          height: 52,
-          backgroundColor: colors.card,
-          borderRadius: pillRadius(52),
-          paddingHorizontal: spacing.md,
-          gap: spacing.sm,
-          marginBottom: spacing.md,
-        }}
-      >
-        <SearchIcon color={colors.text2} />
-        <TextInput
-          style={{ flex: 1, fontSize: 16, color: colors.text }}
-          placeholder="Uygulama ara..."
-          placeholderTextColor={colors.text2}
-          autoCapitalize="none"
-          value={query}
-          onChangeText={setQuery}
-        />
-      </View>
+      <SearchField value={query} onChangeText={setQuery} style={{ marginBottom: spacing.md }} />
 
       <ScrollView
         horizontal
@@ -547,128 +545,172 @@ export default function CatalogScreen({ navigation }) {
               </View>
             )}
 
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={{ fontFamily: fontFamily.extraBold, fontSize: 22, color: colors.text }}>
-                Bu aboneliğe neden sahipsin?
-              </Text>
-              <Text style={{ color: colors.text2, marginTop: 4, marginBottom: spacing.md }}>
-                İsteğe bağlı
-              </Text>
-
-              <View
-                style={{
-                  flexDirection: "row",
-                  flexWrap: "wrap",
-                  gap: spacing.sm,
-                  marginBottom: spacing.md,
-                }}
-              >
-                {reasonOptions.map((label) => (
-                  <Chip
-                    key={label}
-                    label={label}
-                    selected={selectedChip === label}
-                    onPress={() => handleChipPress(label)}
-                  />
-                ))}
-              </View>
-
-              <TextInput
-                style={{
-                  backgroundColor: colors.field,
-                  borderRadius: radius.input,
-                  padding: spacing.sm + 4,
-                  fontSize: 15,
-                  color: colors.text,
-                  minHeight: 52,
-                  textAlignVertical: "top",
-                  marginBottom: spacing.lg,
-                }}
-                placeholder="Ya da kendi cevabını yaz..."
-                placeholderTextColor={colors.text2}
-                value={reasonText}
-                onChangeText={handleReasonTextChange}
-                multiline
-              />
-
-              <Text
-                style={{
-                  fontFamily: fontFamily.bold,
-                  fontSize: 16,
-                  color: colors.text,
-                  marginBottom: spacing.sm,
-                }}
-              >
-                Ne sıklıkla kullanıyorsun?
-              </Text>
-              <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.lg }}>
-                {USAGE_FREQUENCIES.map((label) => (
-                  <Chip
-                    key={label}
-                    label={label}
-                    selected={usageFrequency === label}
-                    onPress={() => handleUsageFrequencyPress(label)}
-                    style={{ flex: 1 }}
-                  />
-                ))}
-              </View>
-
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: spacing.lg,
-                }}
-              >
-                <Text
-                  style={{ fontFamily: fontFamily.bold, fontSize: 16, color: colors.text }}
-                >
-                  Ödeme günü
-                </Text>
-                <TextInput
-                  style={{
-                    width: 76,
-                    height: 52,
+            {!isAuthenticated ? (
+              <>
+                <Pressable
+                  onPress={handleCreateAccountPress}
+                  accessibilityRole="button"
+                  style={({ pressed }) => ({
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
                     backgroundColor: colors.field,
                     borderRadius: radius.input,
-                    textAlign: "center",
-                    fontSize: 18,
-                    fontWeight: "700",
-                    color: colors.text,
-                  }}
-                  placeholder="—"
-                  placeholderTextColor={colors.text2}
-                  keyboardType="number-pad"
-                  value={billingDate}
-                  onChangeText={handleBillingDateChange}
-                />
-              </View>
-
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: spacing.lg,
-                }}
-              >
-                <Text
-                  style={{ fontFamily: fontFamily.bold, fontSize: 16, color: colors.text }}
+                    paddingHorizontal: spacing.md,
+                    minHeight: 56,
+                    marginBottom: spacing.lg,
+                    opacity: pressed ? 0.6 : 1,
+                  })}
                 >
-                  Zam olursa haber ver
-                </Text>
-                <Toggle value={priceAlertEnabled} onValueChange={setPriceAlertEnabled} />
-              </View>
-            </ScrollView>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontWeight: "700" }}>
+                      Bu özellikler için hesap oluştur
+                    </Text>
+                    <Text style={{ color: colors.text2, fontSize: 13, marginTop: 2 }}>
+                      Neden, kullanım sıklığı, ödeme günü ve zam bildirimi
+                    </Text>
+                  </View>
+                  <Text style={{ color: colors.text2, fontSize: 18 }}>›</Text>
+                </Pressable>
 
-            <View style={{ flexDirection: "row", gap: spacing.sm }}>
-              <PillButton title="Geç" variant="outline" onPress={handleSkip} style={{ flex: 1 }} />
-              <PillButton title="Kaydet" onPress={handleSave} style={{ flex: 1 }} />
-            </View>
+                <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                  <PillButton
+                    title="Vazgeç"
+                    variant="outline"
+                    onPress={() => setReasonPlan(null)}
+                    style={{ flex: 1 }}
+                  />
+                  <PillButton title="Ekle" onPress={addGuestPlan} style={{ flex: 1 }} />
+                </View>
+              </>
+            ) : (
+              <>
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <Text style={{ fontFamily: fontFamily.extraBold, fontSize: 22, color: colors.text }}>
+                    Bu aboneliğe neden sahipsin?
+                  </Text>
+                  <Text style={{ color: colors.text2, marginTop: 4, marginBottom: spacing.md }}>
+                    İsteğe bağlı
+                  </Text>
+
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      flexWrap: "wrap",
+                      gap: spacing.sm,
+                      marginBottom: spacing.md,
+                    }}
+                  >
+                    {reasonOptions.map((label) => (
+                      <Chip
+                        key={label}
+                        label={label}
+                        selected={selectedChip === label}
+                        onPress={() => handleChipPress(label)}
+                      />
+                    ))}
+                  </View>
+
+                  <TextInput
+                    style={{
+                      backgroundColor: colors.field,
+                      borderRadius: radius.input,
+                      padding: spacing.sm + 4,
+                      fontSize: 15,
+                      color: colors.text,
+                      minHeight: 52,
+                      textAlignVertical: "top",
+                      marginBottom: spacing.lg,
+                    }}
+                    placeholder="Ya da kendi cevabını yaz..."
+                    placeholderTextColor={colors.text2}
+                    value={reasonText}
+                    onChangeText={handleReasonTextChange}
+                    multiline
+                  />
+
+                  <Text
+                    style={{
+                      fontFamily: fontFamily.bold,
+                      fontSize: 16,
+                      color: colors.text,
+                      marginBottom: spacing.sm,
+                    }}
+                  >
+                    Ne sıklıkla kullanıyorsun?
+                  </Text>
+                  <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.lg }}>
+                    {USAGE_FREQUENCIES.map((label) => (
+                      <Chip
+                        key={label}
+                        label={label}
+                        selected={usageFrequency === label}
+                        onPress={() => handleUsageFrequencyPress(label)}
+                        style={{ flex: 1 }}
+                      />
+                    ))}
+                  </View>
+
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: spacing.lg,
+                    }}
+                  >
+                    <Text
+                      style={{ fontFamily: fontFamily.bold, fontSize: 16, color: colors.text }}
+                    >
+                      Ödeme günü
+                    </Text>
+                    <TextInput
+                      style={{
+                        width: 76,
+                        height: 52,
+                        backgroundColor: colors.field,
+                        borderRadius: radius.input,
+                        textAlign: "center",
+                        fontSize: 18,
+                        fontWeight: "700",
+                        color: colors.text,
+                      }}
+                      placeholder="—"
+                      placeholderTextColor={colors.text2}
+                      keyboardType="number-pad"
+                      value={billingDate}
+                      onChangeText={handleBillingDateChange}
+                    />
+                  </View>
+
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: spacing.lg,
+                    }}
+                  >
+                    <Text
+                      style={{ fontFamily: fontFamily.bold, fontSize: 16, color: colors.text }}
+                    >
+                      Zam olursa haber ver
+                    </Text>
+                    <Toggle value={priceAlertEnabled} onValueChange={setPriceAlertEnabled} />
+                  </View>
+                </ScrollView>
+
+                <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                  <PillButton title="Geç" variant="outline" onPress={handleSkip} style={{ flex: 1 }} />
+                  <PillButton title="Kaydet" onPress={handleSave} style={{ flex: 1 }} />
+                </View>
+              </>
+            )}
           </View>
         </View>
       </Modal>
+
+      {toast}
     </View>
   );
 }

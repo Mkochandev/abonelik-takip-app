@@ -5,6 +5,15 @@ import { PillButton } from "../components/PillButton";
 import { APP_NAME, SLOGAN } from "../config/brand";
 import { fontFamily, useTheme } from "../theme";
 
+// Giriş/kayıt sonrası Paywall açılmalı mı? result, AuthContext.login/register
+// dönüşüdür ({ plan, guestSync }); next, ekrana verilen route parametresi.
+export function shouldOpenPaywall(result, next) {
+  if (!result || result.plan === "premium") {
+    return false;
+  }
+  return Boolean(result.guestSync?.limit_reached) || next === "Paywall";
+}
+
 // Login ve Register ekranları aynı görünümü paylaşır; yalnızca başlık,
 // buton metni ve alt link farklıdır.
 export function AuthLayout({

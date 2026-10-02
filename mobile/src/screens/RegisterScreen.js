@@ -1,11 +1,12 @@
 import { useState } from "react";
 
 import { useAuth } from "../context/AuthContext";
-import { AuthLayout } from "./AuthLayout";
+import { AuthLayout, shouldOpenPaywall } from "./AuthLayout";
 
 export default function RegisterScreen({ navigation, route }) {
   const { register } = useAuth();
   const promptMessage = route.params?.promptMessage;
+  const next = route.params?.next;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
@@ -15,8 +16,14 @@ export default function RegisterScreen({ navigation, route }) {
     setError(null);
     setLoading(true);
     try {
-      await register(email.trim(), password);
-      navigation.goBack();
+      const result = await register(email.trim(), password);
+      // Misafir listesi aktarılırken limite takıldıysa ya da kullanıcı buraya
+      // misafir limiti ekranından geldiyse Paywall'a geç (premium değilse).
+      if (shouldOpenPaywall(result, next)) {
+        navigation.replace("Paywall");
+      } else {
+        navigation.goBack();
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -37,7 +44,7 @@ export default function RegisterScreen({ navigation, route }) {
       onSubmit={handleRegister}
       linkPrefix="Zaten hesabın var mı?"
       linkLabel="Giriş yap"
-      onLinkPress={() => navigation.replace("Login", { promptMessage })}
+      onLinkPress={() => navigation.replace("Login", { promptMessage, next })}
     />
   );
 }
