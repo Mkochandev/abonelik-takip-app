@@ -19,13 +19,7 @@ class RevenueCatError extends Error {
 
 // premium_expires_at geçmişse kullanıcıyı free say (webhook/sync gecikmiş
 // ya da hiç gelmemiş olabilir; süresi geçen bir premium'u asla güvenmeyiz).
-async function getEffectivePlan(userId) {
-  const { rows } = await db.query(
-    "select plan, premium_expires_at from users where id = $1",
-    [userId]
-  );
-
-  const row = rows[0];
+function toEffectivePlan(row) {
   if (!row) {
     return { plan: "free", premium_expires_at: null };
   }
@@ -39,6 +33,50 @@ async function getEffectivePlan(userId) {
     plan: isExpired ? "free" : row.plan,
     premium_expires_at: row.premium_expires_at,
   };
+}
+
+async function getEffectivePlan(userId) {
+  const { rows } = await db.query(
+    "select plan, premium_expires_at from users where id = $1",
+    [userId]
+  );
+
+  return toEffectivePlan(rows[0]);
+}
+
+// Verilen fonksiyonu tek bir transaction içinde, aynı bağlantı (client)
+// üzerinden çalıştırır; hata olursa geri alır.
+async function withTransaction(fn) {
+  const client = await db.connect();
+  try {
+    await client.query("begin");
+    const result = await fn(client);
+    await client.query("commit");
+    return result;
+  } catch (error) {
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+// Transaction içinde çağrılmalı. Kullanıcının users satırını FOR UPDATE ile
+// kilitler; böylece aynı kullanıcı için eşzamanlı ekleme istekleri sırayla
+// çalışır ve "say → ekle" arasında limit aşılamaz. users satırı henüz
+// oluşmamışsa (senkron tetikleyicisi gecikmişse) aynı garantiyi advisory
+// lock ile sağlarız.
+async function lockUserAndGetPlan(client, userId) {
+  const { rows } = await client.query(
+    "select plan, premium_expires_at from users where id = $1 for update",
+    [userId]
+  );
+
+  if (rows.length === 0) {
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [userId]);
+  }
+
+  return toEffectivePlan(rows[0]);
 }
 
 // RevenueCat'ten kullanıcının güncel entitlement durumunu çekip users
@@ -91,8 +129,9 @@ async function syncPlanFromRevenueCat(userId) {
   return getEffectivePlan(userId);
 }
 
-async function getSubscriptionCount(userId) {
-  const { rows } = await db.query(
+// client verilirse (transaction içi) sayım o bağlantı üzerinden yapılır.
+async function getSubscriptionCount(userId, client = db) {
+  const { rows } = await client.query(
     "select count(*)::int as count from user_subscriptions where user_id = $1",
     [userId]
   );
@@ -103,8 +142,11 @@ async function getSubscriptionCount(userId) {
 module.exports = {
   FREE_LIMIT,
   RevenueCatError,
+  UUID_REGEX,
   getEffectivePlan,
   getSubscriptionCount,
   isValidUserId,
+  lockUserAndGetPlan,
   syncPlanFromRevenueCat,
+  withTransaction,
 };

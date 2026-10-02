@@ -166,6 +166,16 @@ export function addUserSubscription(token, catalogId, details = {}) {
   });
 }
 
+// Birden çok katalog kaydını tek istekte ekler.
+// Yanıt: { added, skipped: [{ catalog_id, reason }], limit_reached }
+export function bulkAddUserSubscriptions(token, catalogIds) {
+  return request("/user/subscriptions/bulk", {
+    method: "POST",
+    token,
+    body: { items: catalogIds.map((catalogId) => ({ catalog_id: catalogId })) },
+  });
+}
+
 export function updateUserSubscription(token, id, updates) {
   return request(`/user/subscriptions/${id}`, {
     method: "PATCH",
