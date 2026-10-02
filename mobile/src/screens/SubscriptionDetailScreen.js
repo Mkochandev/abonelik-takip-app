@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as api from "../api/client";
 import { Card, CategoryTag, GroupedList, GroupedListRow, PillButton, ServiceLogo, Toggle } from "../components";
 import { useAuth } from "../context/AuthContext";
+import { removeGuestSubscription } from "../storage/guestSubscriptions";
 import { fontFamily, useTheme } from "../theme";
 import { formatAmount, formatSubscriptionPrice } from "../utils/price";
 import { withAccusativeSuffix } from "../utils/turkish";
@@ -38,6 +39,7 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
   const [error, setError] = useState(null);
   const [priceAlertEnabled, setPriceAlertEnabled] = useState(subscription.price_alert_enabled);
   const [savingAlert, setSavingAlert] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   useEffect(() => {
     let isActive = true;
@@ -85,6 +87,33 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
     if (catalogItem?.cancel_url) {
       Linking.openURL(catalogItem.cancel_url);
     }
+  }
+
+  async function removeSubscription() {
+    setRemoving(true);
+    try {
+      if (isGuest) {
+        await removeGuestSubscription(subscription.catalog_id);
+      } else {
+        await api.removeUserSubscription(token, subscription.id);
+      }
+      // Ana sayfa odaklandığında listeyi yeniden yükler.
+      navigation.navigate("MainTabs", { screen: "Home" });
+    } catch (err) {
+      setRemoving(false);
+      Alert.alert("Hata", err.message);
+    }
+  }
+
+  function handleRemovePress() {
+    Alert.alert(
+      "Aboneliği kaldır",
+      `${subscription.app_name} takip listenden kaldırılsın mı? Bu işlem servisteki aboneliğini iptal etmez.`,
+      [
+        { text: "Vazgeç", style: "cancel" },
+        { text: "Kaldır", style: "destructive", onPress: removeSubscription },
+      ]
+    );
   }
 
   const price = formatSubscriptionPrice(subscription);
@@ -266,6 +295,27 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
           </Text>
         </View>
       ) : null}
+
+      <Pressable
+        onPress={handleRemovePress}
+        disabled={removing}
+        accessibilityRole="button"
+        style={({ pressed }) => ({
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: 48,
+          marginTop: spacing.md,
+          opacity: pressed ? 0.6 : 1,
+        })}
+      >
+        {removing ? (
+          <ActivityIndicator color={brand.mercan} />
+        ) : (
+          <Text style={{ color: brand.mercan, fontWeight: "700", fontSize: 15.5 }}>
+            Aboneliği kaldır
+          </Text>
+        )}
+      </Pressable>
     </ScrollView>
   );
 }
