@@ -164,7 +164,12 @@ export default function CatalogScreen({ navigation }) {
       return;
     }
 
-    if (isAuthenticated && userPlan === "free" && limit != null && Object.keys(selections).length >= limit) {
+    if (
+      isAuthenticated &&
+      userPlan === "free" &&
+      limit != null &&
+      Object.keys(selections).length >= limit
+    ) {
       setPendingPaywallPlan({ ...plan, app_name: appName });
       navigation.navigate("Paywall");
       return;

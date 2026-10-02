@@ -116,11 +116,14 @@ router.post("/bulk", async (req, res) => {
     return res.status(400).json({ error: `En fazla ${MAX_BULK_ITEMS} kayıt gönderilebilir` });
   }
 
-  const catalogIds = items.map((item) => item?.catalog_id);
+  const rawIds = items.map((item) => item?.catalog_id);
 
-  if (catalogIds.some((id) => typeof id !== "string" || !UUID_REGEX.test(id))) {
+  if (rawIds.some((id) => typeof id !== "string" || !UUID_REGEX.test(id))) {
     return res.status(400).json({ error: "Geçersiz catalog_id formatı" });
   }
+
+  // Postgres uuid'leri küçük harfle döndürür; Set karşılaştırmaları tutsun.
+  const catalogIds = rawIds.map((id) => id.toLowerCase());
 
   try {
     const { addedIds, skipped } = await withTransaction(async (client) => {
