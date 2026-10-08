@@ -14,7 +14,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { fontFamily, useTheme } from "../theme";
 import { formatSubscriptionPrice } from "../utils/price";
-import { withNameAccusative } from "../utils/turkish";
 import { KivirikBubble, KivirikHead } from "./brand";
 import { PillButton } from "./PillButton";
 import { ServiceLogo } from "./ServiceLogo";
@@ -119,7 +118,9 @@ function SheetContent({ plan, isGuest, onClose, onSubmit, onCreateAccount }) {
   const isLastStep = step === STEP_COUNT - 1;
 
   const questions = [
-    `${withNameAccusative(plan.app_name)} ne için kullanıyorsun?`,
+    // Uygulama adına ek getirilmez; okunuşu belirsiz yabancı adlarda yanlış
+    // ek seçmemek için eksiz kalıplar kullanılır.
+    `${plan.app_name} — ne için kullanıyorsun?`,
     "Ne sıklıkla kullanıyorsun?",
     "Ayın kaçında ödüyorsun?",
   ];
