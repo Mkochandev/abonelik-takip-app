@@ -4,6 +4,7 @@
 export const fontFamily = {
   extraBold: "BricolageGrotesque_800ExtraBold",
   bold: "BricolageGrotesque_700Bold",
+  semiBold: "BricolageGrotesque_600SemiBold",
 };
 
 export const typography = {

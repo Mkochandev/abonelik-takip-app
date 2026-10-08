@@ -1,9 +1,10 @@
 import { useCallback, useRef, useState } from "react";
 import { Alert, ScrollView, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
+import Svg, { Path } from "react-native-svg";
 
 import * as api from "../../api/client";
-import { Card, PillButton, ServiceLogo } from "../../components";
+import { Card, Kivirik, PillButton, ServiceLogo } from "../../components";
 import { useAuth } from "../../context/AuthContext";
 import { GUEST_LIMIT, addGuestSubscriptions } from "../../storage/guestSubscriptions";
 import { useTheme } from "../../theme";
@@ -11,6 +12,26 @@ import { sumMonthlyTry } from "../../utils/catalog";
 import { formatTRY } from "../../utils/price";
 import { CatalogStatus, OnboardingLayout } from "./OnboardingLayout";
 import { useOnboarding } from "./OnboardingContext";
+
+// Kıvırık'ın üstünde duran, onay işaretli açık mavi bulut.
+function CheckCloud() {
+  return (
+    <Svg width={92} height={60} viewBox="0 0 92 60">
+      <Path
+        d="M24 56 C10 56 2 47 2 37 C2 27 10 19 21 19 C24 9 33 2 45 2 C58 2 67 11 69 22 C81 22 90 30 90 40 C90 49 82 56 71 56 Z"
+        fill="#CFE5FB"
+      />
+      <Path
+        d="M33 31 L42 40 L60 22"
+        stroke="#15131A"
+        strokeWidth={6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </Svg>
+  );
+}
 
 export default function SaveScreen({ navigation }) {
   const { token, isAuthenticated, refreshPlan } = useAuth();
@@ -102,6 +123,10 @@ export default function SaveScreen({ navigation }) {
         <CatalogStatus />
       ) : (
         <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.md, paddingBottom: spacing.md }}>
+          <View style={{ alignItems: "center", marginBottom: spacing.lg }}>
+            <CheckCloud />
+            <Kivirik size={180} mood="mutlu" bowl="gece" />
+          </View>
           <Text style={[typography.sectionTitle, { color: colors.text }]}>Seçimlerini kaydet</Text>
           <Text style={{ color: colors.text2, marginTop: spacing.xs, marginBottom: spacing.md, lineHeight: 21 }}>
             Hesap oluşturursan aboneliklerin kaybolmaz ve bir servise zam geldiğinde haber veririz.

@@ -14,7 +14,7 @@ export const lightColors = {
   onAccent: "#15131A",
   // Bilgi kutuları gibi zeminden ayrışması gereken yumuşak vurgu yüzeyi.
   accentSoft: "#FFF0C7",
-  danger: "#C4321C",
+  danger: "#B4271F", // biberYazi: açık zeminde okunur kırmızı
   switchOff: "#C9C5CF",
   scrim: "rgba(21,19,26,0.5)",
 };
@@ -40,8 +40,18 @@ export const darkColors = {
 export const brandColors = {
   ink: "#15131A",
   safran: "#FFC53D",
+  biber: "#C8312A",
+  biberYazi: "#B4271F", // açık zeminde kırmızı yazı (kontrast için)
+  krem: "#F6EEDC",
   mandalina: "#FF8A3D",
-  mercan: "#FF5E57",
+  odun: "#E2B07A",
+};
+
+// Sistem temasından bağımsız, her zaman koyu zeminli ekranlar (Welcome,
+// Summary, Giriş/Kayıt) için: koyu tema paleti, zemin ink.
+export const nightColors = {
+  ...darkColors,
+  bg: brandColors.ink,
 };
 
 // Kategori pastelleri; üstlerindeki ikon/harf her zaman ink (#15131A).

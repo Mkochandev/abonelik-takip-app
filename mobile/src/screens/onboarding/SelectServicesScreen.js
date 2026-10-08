@@ -5,7 +5,7 @@ import Svg, { Path } from "react-native-svg";
 import { Chip, PillButton, SearchField, ServiceLogo } from "../../components";
 import { CATEGORIES } from "../../config/categories";
 import { useTheme } from "../../theme";
-import { CatalogStatus, OnboardingLayout } from "./OnboardingLayout";
+import { CatalogStatus, KivirikPrompt, OnboardingLayout } from "./OnboardingLayout";
 import { useOnboarding } from "./OnboardingContext";
 
 const COLUMNS = 3;
@@ -89,7 +89,7 @@ function ServiceTile({ group, selected, width, onPress }) {
 export default function SelectServicesScreen({ navigation }) {
   const { catalog, catalogLoading, catalogError, selectedApps, isSelected, toggleApp, finish } =
     useOnboarding();
-  const { colors, spacing, typography } = useTheme();
+  const { colors, spacing } = useTheme();
   const { width: screenWidth } = useWindowDimensions();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState(null);
@@ -134,12 +134,7 @@ export default function SelectServicesScreen({ navigation }) {
       }
     >
       <View style={{ paddingHorizontal: spacing.md }}>
-        <Text style={[typography.sectionTitle, { color: colors.text }]}>
-          Hangi servisleri kullanıyorsun?
-        </Text>
-        <Text style={{ color: colors.text2, marginTop: spacing.xs, marginBottom: spacing.md }}>
-          Birden fazla seçebilirsin.
-        </Text>
+        <KivirikPrompt text="Hangi servisleri kullanıyorsun? Birden fazla seçebilirsin." />
         <SearchField value={query} onChangeText={setQuery} style={{ marginBottom: spacing.md }} />
       </View>
 

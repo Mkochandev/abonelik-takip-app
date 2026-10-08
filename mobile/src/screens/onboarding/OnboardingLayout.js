@@ -3,18 +3,20 @@ import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { PillButton } from "../../components";
-import { useTheme } from "../../theme";
+import { KivirikBubble, KivirikHead, PillButton } from "../../components";
+import { nightColors, useNightStatusBar, useTheme } from "../../theme";
 import { useOnboarding } from "./OnboardingContext";
 import { ONBOARDING_STEPS } from "./steps";
 
 // Tüm onboarding adımlarının ortak iskeleti: üstte geri butonu ve ince
 // ilerleme çubuğu, altta sabit eylem alanı (footer). Ekran odaklandığında
-// adım taslağa yazılır.
-export function OnboardingLayout({ step, children, footer }) {
+// adım taslağa yazılır. night: sistem temasından bağımsız koyu zemin.
+export function OnboardingLayout({ step, children, footer, night = false }) {
   const navigation = useNavigation();
   const { setStep } = useOnboarding();
-  const { colors, spacing } = useTheme();
+  const theme = useTheme();
+  const colors = night ? nightColors : theme.colors;
+  const { spacing } = theme;
   const insets = useSafeAreaInsets();
   const index = ONBOARDING_STEPS.indexOf(step);
   const progress = (index + 1) / ONBOARDING_STEPS.length;
@@ -27,6 +29,7 @@ export function OnboardingLayout({ step, children, footer }) {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      {night ? <NightStatusBar /> : null}
       <View
         style={{
           flexDirection: "row",
@@ -90,10 +93,24 @@ export function OnboardingLayout({ step, children, footer }) {
   );
 }
 
+// Adımın sorusu: küçük Kıvırık kafası ve yanında konuşma balonu.
+export function KivirikPrompt({ text, mood = "normal" }) {
+  const { spacing } = useTheme();
+
+  return (
+    <View style={{ flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, marginBottom: spacing.md }}>
+      <KivirikHead size={52} mood={mood} />
+      <KivirikBubble text={text} tail="left" style={{ flex: 1 }} />
+    </View>
+  );
+}
+
 // Katalog yüklenirken/yüklenemediğinde adımların gösterdiği durum.
-export function CatalogStatus() {
+export function CatalogStatus({ night = false }) {
   const { catalogLoading, catalogError, reloadCatalog } = useOnboarding();
-  const { colors, spacing } = useTheme();
+  const theme = useTheme();
+  const colors = night ? nightColors : theme.colors;
+  const { spacing } = theme;
 
   if (catalogLoading) {
     return <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: spacing.xl }} />;
@@ -108,5 +125,11 @@ export function CatalogStatus() {
     );
   }
 
+  return null;
+}
+
+// Koşullu hook çağrısından kaçınmak için ayrı bileşen.
+function NightStatusBar() {
+  useNightStatusBar();
   return null;
 }

@@ -5,12 +5,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import * as api from "../api/client";
 import {
-  BrandIcon,
   Card,
   CategoryBadge,
   Chip,
   GroupedList,
   GroupedListRow,
+  KivirikBubble,
+  KivirikHead,
   PillButton,
   ServiceLogo,
 } from "../components";
@@ -37,6 +38,8 @@ async function loadGuestSubscriptions() {
       isGuest: true,
     }));
 }
+
+const SECTION_GAP = 26;
 
 // [a, b, c] -> [[a, b], [c]]
 function chunkPairs(items) {
@@ -68,7 +71,31 @@ function getNextBillingInfo(billingDate) {
     month: "long",
   });
 
-  return { daysLeft, dateLabel };
+  return { daysLeft, dateLabel, month: next.getMonth() };
+}
+
+// Kıvırık'ın ana sayfadaki mesajı; liste yüklenmediyse null.
+function getKivirikMessage(subscriptions) {
+  if (subscriptions.length === 0) {
+    return "Kâsen boş. Katalogdan ilk aboneliğini ekle.";
+  }
+
+  const payments = subscriptions
+    .filter((sub) => sub.billing_date)
+    .map((sub) => ({ ...sub, ...getNextBillingInfo(sub.billing_date) }))
+    .sort((a, b) => a.daysLeft - b.daysLeft);
+  const first = payments[0];
+
+  if (!first || first.daysLeft > 7) {
+    return "Bu hafta ödeme yok, kâsen sakin.";
+  }
+
+  // İlk ödeme ay sonunu aşıp gelecek aya düştüyse o ayın ödemeleri sayılır.
+  const count = payments.filter((item) => item.month === first.month).length;
+  const when =
+    first.daysLeft <= 0 ? "bugün" : first.daysLeft === 1 ? "yarın" : `${first.daysLeft} gün sonra`;
+
+  return `Bu ay ${count} ödemen var. İlki ${when}: ${first.app_name}.`;
 }
 
 export default function HomeScreen({ navigation }) {
@@ -80,6 +107,7 @@ export default function HomeScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showGuestBanner, setShowGuestBanner] = useState(false);
+  const [bubbleOpen, setBubbleOpen] = useState(true);
   const scrollRef = useRef(null);
   const subsSectionY = useRef(0);
 
@@ -148,6 +176,8 @@ export default function HomeScreen({ navigation }) {
   const categoryEntries = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
   const categoryGrandTotal = categoryEntries.reduce((sum, [, value]) => sum + value, 0);
 
+  const kivirikMessage = loading || error ? null : getKivirikMessage(subscriptions);
+
   function goToCatalog() {
     navigation.navigate("Catalog");
   }
@@ -176,7 +206,7 @@ export default function HomeScreen({ navigation }) {
           flexDirection: "row",
           justifyContent: "space-between",
           alignItems: "flex-start",
-          marginBottom: spacing.lg,
+          marginBottom: kivirikMessage && bubbleOpen ? spacing.sm : SECTION_GAP,
         }}
       >
         <View>
@@ -185,11 +215,48 @@ export default function HomeScreen({ navigation }) {
             {isAuthenticated ? user?.email : "Misafir"}
           </Text>
         </View>
-        <BrandIcon size={40} />
+        <Pressable
+          onPress={() => setBubbleOpen((open) => !open)}
+          accessibilityRole="button"
+          accessibilityLabel="Kıvırık"
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 28,
+            backgroundColor: colors.card,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <KivirikHead size={46} />
+          {kivirikMessage ? (
+            <View
+              style={{
+                position: "absolute",
+                top: 1,
+                right: 1,
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                backgroundColor: brand.biber,
+                borderWidth: 2,
+                borderColor: colors.bg,
+              }}
+            />
+          ) : null}
+        </Pressable>
       </View>
 
+      {kivirikMessage && bubbleOpen ? (
+        <KivirikBubble
+          text={kivirikMessage}
+          tail="right"
+          style={{ alignSelf: "flex-end", maxWidth: 300, marginBottom: SECTION_GAP }}
+        />
+      ) : null}
+
       {!isAuthenticated && showGuestBanner ? (
-        <Card style={{ marginBottom: spacing.lg }}>
+        <Card style={{ marginBottom: SECTION_GAP }}>
           <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm }}>
             <Text style={{ flex: 1, color: colors.text, fontWeight: "600", lineHeight: 21 }}>
               Abonelikler sadece bu cihazda. Kaybolmaması ve zam bildirimi için hesap oluştur.
@@ -218,7 +285,7 @@ export default function HomeScreen({ navigation }) {
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
-            marginBottom: spacing.lg,
+            marginBottom: SECTION_GAP,
           }}
         >
           <Text style={{ color: colors.text2, fontSize: 13 }}>
@@ -233,7 +300,7 @@ export default function HomeScreen({ navigation }) {
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
-            marginBottom: spacing.lg,
+            marginBottom: SECTION_GAP,
           }}
         >
           <Text style={{ color: colors.text2, fontSize: 13 }}>
@@ -243,7 +310,7 @@ export default function HomeScreen({ navigation }) {
         </Pressable>
       ) : null}
 
-      <Card noPadding style={{ marginBottom: spacing.lg }}>
+      <Card noPadding style={{ marginBottom: SECTION_GAP }}>
         <View style={{ padding: spacing.md }}>
           <Text style={{ color: colors.text2, fontSize: 13, fontWeight: "600" }}>
             Aylık toplam
@@ -277,7 +344,7 @@ export default function HomeScreen({ navigation }) {
       </Card>
 
       {upcomingPayments.length > 0 && (
-        <View style={{ marginBottom: spacing.lg }}>
+        <View style={{ marginBottom: SECTION_GAP }}>
           <Text style={[typography.sectionTitle, { color: colors.text, marginBottom: spacing.sm }]}>
             Yaklaşan ödemeler
           </Text>
@@ -331,7 +398,7 @@ export default function HomeScreen({ navigation }) {
       )}
 
       {categoryEntries.length > 0 && (
-        <View style={{ marginBottom: spacing.lg }}>
+        <View style={{ marginBottom: SECTION_GAP }}>
           <Text style={[typography.sectionTitle, { color: colors.text, marginBottom: spacing.sm }]}>
             Kategoriler
           </Text>

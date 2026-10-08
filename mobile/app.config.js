@@ -27,8 +27,7 @@ export default {
       package: "com.mkochandev.aboneliktakip",
       adaptiveIcon: {
         backgroundColor: "#15131A",
-        foregroundImage: "./assets/android-icon-foreground.png",
-        monochromeImage: "./assets/android-icon-monochrome.png",
+        foregroundImage: "./assets/adaptive-icon.png",
       },
     },
     web: {

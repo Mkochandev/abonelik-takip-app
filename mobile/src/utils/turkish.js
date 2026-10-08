@@ -40,3 +40,26 @@ function accusativeSuffix(number) {
 export function withAccusativeSuffix(number) {
   return `${number}'${accusativeSuffix(number)}`;
 }
+
+// Özel adlara kesme işaretiyle hâl eki ekler (Netflix'i, Spotify'ın,
+// YouTube'un). Ek yazımdaki son ünlüye göre seçilir; okunuşu yazımından
+// farklı yabancı adlarda (örn. "Spotify" → "spotifay") ek yazıma uyar.
+const VOWEL_HARMONY = { a: "ı", ı: "ı", o: "u", u: "u", e: "i", i: "i", ö: "ü", ü: "ü" };
+
+function nameSuffix(name, { afterVowel, afterConsonant }) {
+  const letters = name.toLocaleLowerCase("tr-TR").replace(/[^a-zçğıöşü]/g, "");
+  const lastVowel = [...letters].reverse().find((ch) => VOWEL_HARMONY[ch]);
+  const vowel = VOWEL_HARMONY[lastVowel] ?? "i";
+  const endsWithVowel = Boolean(VOWEL_HARMONY[letters.slice(-1)]);
+  return `${name}'${(endsWithVowel ? afterVowel : afterConsonant)(vowel)}`;
+}
+
+// Belirtme hâli: Netflix'i, Tidal'ı, Disney'i
+export function withNameAccusative(name) {
+  return nameSuffix(name, { afterVowel: (v) => `y${v}`, afterConsonant: (v) => v });
+}
+
+// İlgi hâli: Netflix'in, Tidal'ın, Canva'nın
+export function withNameGenitive(name) {
+  return nameSuffix(name, { afterVowel: (v) => `n${v}n`, afterConsonant: (v) => `${v}n` });
+}

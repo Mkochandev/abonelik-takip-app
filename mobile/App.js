@@ -2,6 +2,7 @@ import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import {
   useFonts,
+  BricolageGrotesque_600SemiBold,
   BricolageGrotesque_700Bold,
   BricolageGrotesque_800ExtraBold,
 } from '@expo-google-fonts/bricolage-grotesque';
@@ -123,6 +124,7 @@ function ThemedNavigationContainer() {
 
 export default function App() {
   const [fontsLoaded] = useFonts({
+    BricolageGrotesque_600SemiBold,
     BricolageGrotesque_700Bold,
     BricolageGrotesque_800ExtraBold,
   });

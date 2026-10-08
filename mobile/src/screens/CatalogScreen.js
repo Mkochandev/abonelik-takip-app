@@ -4,18 +4,16 @@ import {
   Alert,
   FlatList,
   Linking,
-  Modal,
   Pressable,
   ScrollView,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import * as api from "../api/client";
-import { Card, Chip, PillButton, SearchField, ServiceLogo, Toggle, useToast } from "../components";
+import { AddSubscriptionSheet, Card, Chip, SearchField, ServiceLogo, useToast } from "../components";
 import { CATEGORIES } from "../config/categories";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -27,34 +25,9 @@ import {
 import { fontFamily, useTheme } from "../theme";
 import { formatSubscriptionPrice } from "../utils/price";
 
-const REASON_OPTIONS = {
-  "Video/Dizi-Film": [
-    "Belirli bir dizi/film için",
-    "Genel eğlence takibi",
-    "Aile/ev arkadaşıyla ortak",
-    "Spor/belgesel içerikleri",
-  ],
-  Müzik: ["Günlük müzik dinleme", "Playlist/podcast takibi", "Reklamsız dinleme", "Offline indirme"],
-  "Kitap/Sesli Kitap": [
-    "Belirli bir kitap/seri için",
-    "Düzenli okuma alışkanlığı",
-    "Yolda/işte dinleme",
-  ],
-  "Yapay Zeka": ["İş/proje için", "Kod yazarken yardım", "Öğrenme/araştırma", "Kişisel kullanım"],
-  "Bulut Depolama": [
-    "Fotoğraf/video yedekleme",
-    "Cihazlar arası senkronizasyon",
-    "İş dosyaları için",
-  ],
-  "Üretkenlik/Tasarım": ["İş projeleri için", "Freelance/müşteri işleri", "Kişisel hobi", "Okul/eğitim"],
-  Spor: ["Maç takibi", "Belirli bir takım/lig için", "Genel spor içerikleri"],
-};
-
-const USAGE_FREQUENCIES = ["Her gün", "Haftada birkaç", "Nadiren"];
-
 export default function CatalogScreen({ navigation }) {
   const { token, isAuthenticated, plan: userPlan, limit } = useAuth();
-  const { colors, spacing, radius, typography } = useTheme();
+  const { colors, spacing, typography } = useTheme();
   const insets = useSafeAreaInsets();
   const [toast, showToast] = useToast();
   const [query, setQuery] = useState("");
@@ -68,11 +41,6 @@ export default function CatalogScreen({ navigation }) {
   const [selections, setSelections] = useState({});
   const [pendingPlanId, setPendingPlanId] = useState(null);
   const [reasonPlan, setReasonPlan] = useState(null);
-  const [selectedChip, setSelectedChip] = useState(null);
-  const [reasonText, setReasonText] = useState("");
-  const [usageFrequency, setUsageFrequency] = useState(null);
-  const [billingDate, setBillingDate] = useState("");
-  const [priceAlertEnabled, setPriceAlertEnabled] = useState(true);
   const [pendingPaywallPlan, setPendingPaywallPlan] = useState(null);
 
   useEffect(() => {
@@ -144,11 +112,6 @@ export default function CatalogScreen({ navigation }) {
 
   function startReasonFlow(plan) {
     setReasonPlan(plan);
-    setSelectedChip(null);
-    setReasonText("");
-    setUsageFrequency(null);
-    setBillingDate("");
-    setPriceAlertEnabled(true);
   }
 
   function handleSelectPress(appName, plan) {
@@ -241,76 +204,26 @@ export default function CatalogScreen({ navigation }) {
   function handleCreateAccountPress() {
     setReasonPlan(null);
     navigation.navigate("Register", {
-      promptMessage: "Hatırlatma ve zam bildirimi için hesap oluştur",
+      promptMessage: "Cevaplarını saklamak için hesap oluştur",
     });
   }
 
-  function handleSave() {
+  // Kıvırık'ın sorduğu ekleme sayfası bitti. Misafir verisi yalnızca
+  // catalog_id tuttuğu için cevaplar misafirde saklanmaz.
+  function handleSheetSubmit(details) {
     const plan = reasonPlan;
     if (!plan) {
       return;
     }
 
-    const trimmedBillingDate = billingDate.trim();
-    let parsedBillingDate = null;
-
-    if (trimmedBillingDate) {
-      parsedBillingDate = Number(trimmedBillingDate);
-      if (!Number.isInteger(parsedBillingDate) || parsedBillingDate < 1 || parsedBillingDate > 31) {
-        Alert.alert("Hata", "Fatura günü 1 ile 31 arasında olmalı");
-        return;
-      }
-    }
-
-    submitPlan(plan, {
-      reason: reasonText.trim() || null,
-      usage_frequency: usageFrequency,
-      billing_date: parsedBillingDate,
-      price_alert_enabled: priceAlertEnabled,
-    });
-  }
-
-  function handleSkip() {
-    const plan = reasonPlan;
-    if (!plan) {
+    if (!isAuthenticated) {
+      addGuestPlan();
       return;
     }
 
-    submitPlan(plan, {
-      reason: null,
-      usage_frequency: null,
-      billing_date: null,
-      price_alert_enabled: true,
-    });
+    // price_alert_enabled gönderilmez; sunucudaki varsayılan geçerli kalır.
+    submitPlan(plan, details);
   }
-
-  function handleChipPress(label) {
-    if (selectedChip === label) {
-      setSelectedChip(null);
-      setReasonText((current) => (current === label ? "" : current));
-    } else {
-      setSelectedChip(label);
-      setReasonText(label);
-    }
-  }
-
-  function handleReasonTextChange(text) {
-    setReasonText(text);
-    if (selectedChip && text !== selectedChip) {
-      setSelectedChip(null);
-    }
-  }
-
-  function handleUsageFrequencyPress(label) {
-    setUsageFrequency((current) => (current === label ? null : label));
-  }
-
-  function handleBillingDateChange(text) {
-    setBillingDate(text.replace(/[^0-9]/g, "").slice(0, 2));
-  }
-
-  const reasonOptions = reasonPlan ? REASON_OPTIONS[reasonPlan.category] || [] : [];
-  const reasonPrice = reasonPlan ? formatSubscriptionPrice(reasonPlan) : null;
 
   return (
     <View
@@ -360,7 +273,7 @@ export default function CatalogScreen({ navigation }) {
           contentContainerStyle={{ paddingBottom: 120, gap: spacing.sm }}
           ListEmptyComponent={
             <Text style={{ textAlign: "center", color: colors.text2, marginTop: spacing.xl }}>
-              Sonuç bulunamadı
+              Kıvırık bu kâsede bulamadı. Başka bir ad ya da kategori dene.
             </Text>
           }
           ListFooterComponent={
@@ -482,238 +395,13 @@ export default function CatalogScreen({ navigation }) {
         />
       )}
 
-      <Modal
-        visible={reasonPlan !== null}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setReasonPlan(null)}
-      >
-        <View style={{ flex: 1, backgroundColor: colors.scrim, justifyContent: "flex-end" }}>
-          <Pressable style={{ flex: 1 }} onPress={() => setReasonPlan(null)} />
-
-          <View
-            style={{
-              backgroundColor: colors.card,
-              borderTopLeftRadius: radius.sheet,
-              borderTopRightRadius: radius.sheet,
-              padding: spacing.lg,
-              maxHeight: "88%",
-            }}
-          >
-            <View
-              style={{
-                width: 36,
-                height: 4,
-                borderRadius: 2,
-                backgroundColor: colors.divider,
-                alignSelf: "center",
-                marginBottom: spacing.md,
-              }}
-            />
-
-            {reasonPlan && (
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: spacing.sm,
-                  marginBottom: spacing.lg,
-                }}
-              >
-                <ServiceLogo
-                  domain={reasonPlan.domain}
-                  logoUrl={reasonPlan.logo_url}
-                  name={reasonPlan.app_name}
-                  category={reasonPlan.category}
-                  size={52}
-                />
-                <View>
-                  <Text style={{ fontSize: 16, fontWeight: "700", color: colors.text }}>
-                    {reasonPlan.app_name} {reasonPlan.plan_name}
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: fontFamily.bold,
-                      fontSize: 15,
-                      color: colors.text,
-                      marginTop: 2,
-                    }}
-                  >
-                    {reasonPrice.primary} / ay
-                  </Text>
-                  {reasonPrice.secondary ? (
-                    <Text style={{ fontSize: 13, color: colors.text2, marginTop: 2 }}>
-                      {reasonPrice.secondary}
-                    </Text>
-                  ) : null}
-                </View>
-              </View>
-            )}
-
-            {!isAuthenticated ? (
-              <>
-                <Pressable
-                  onPress={handleCreateAccountPress}
-                  accessibilityRole="button"
-                  style={({ pressed }) => ({
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    backgroundColor: colors.field,
-                    borderRadius: radius.input,
-                    paddingHorizontal: spacing.md,
-                    minHeight: 56,
-                    marginBottom: spacing.lg,
-                    opacity: pressed ? 0.6 : 1,
-                  })}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.text, fontWeight: "700" }}>
-                      Bu özellikler için hesap oluştur
-                    </Text>
-                    <Text style={{ color: colors.text2, fontSize: 13, marginTop: 2 }}>
-                      Neden, kullanım sıklığı, ödeme günü ve zam bildirimi
-                    </Text>
-                  </View>
-                  <Text style={{ color: colors.text2, fontSize: 18 }}>›</Text>
-                </Pressable>
-
-                <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                  <PillButton
-                    title="Vazgeç"
-                    variant="outline"
-                    onPress={() => setReasonPlan(null)}
-                    style={{ flex: 1 }}
-                  />
-                  <PillButton title="Ekle" onPress={addGuestPlan} style={{ flex: 1 }} />
-                </View>
-              </>
-            ) : (
-              <>
-                <ScrollView showsVerticalScrollIndicator={false}>
-                  <Text style={{ fontFamily: fontFamily.extraBold, fontSize: 22, color: colors.text }}>
-                    Bu aboneliğe neden sahipsin?
-                  </Text>
-                  <Text style={{ color: colors.text2, marginTop: 4, marginBottom: spacing.md }}>
-                    İsteğe bağlı
-                  </Text>
-
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      flexWrap: "wrap",
-                      gap: spacing.sm,
-                      marginBottom: spacing.md,
-                    }}
-                  >
-                    {reasonOptions.map((label) => (
-                      <Chip
-                        key={label}
-                        label={label}
-                        selected={selectedChip === label}
-                        onPress={() => handleChipPress(label)}
-                      />
-                    ))}
-                  </View>
-
-                  <TextInput
-                    style={{
-                      backgroundColor: colors.field,
-                      borderRadius: radius.input,
-                      padding: spacing.sm + 4,
-                      fontSize: 15,
-                      color: colors.text,
-                      minHeight: 52,
-                      textAlignVertical: "top",
-                      marginBottom: spacing.lg,
-                    }}
-                    placeholder="Ya da kendi cevabını yaz..."
-                    placeholderTextColor={colors.text2}
-                    value={reasonText}
-                    onChangeText={handleReasonTextChange}
-                    multiline
-                  />
-
-                  <Text
-                    style={{
-                      fontFamily: fontFamily.bold,
-                      fontSize: 16,
-                      color: colors.text,
-                      marginBottom: spacing.sm,
-                    }}
-                  >
-                    Ne sıklıkla kullanıyorsun?
-                  </Text>
-                  <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.lg }}>
-                    {USAGE_FREQUENCIES.map((label) => (
-                      <Chip
-                        key={label}
-                        label={label}
-                        selected={usageFrequency === label}
-                        onPress={() => handleUsageFrequencyPress(label)}
-                        style={{ flex: 1 }}
-                      />
-                    ))}
-                  </View>
-
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      marginBottom: spacing.lg,
-                    }}
-                  >
-                    <Text
-                      style={{ fontFamily: fontFamily.bold, fontSize: 16, color: colors.text }}
-                    >
-                      Ödeme günü
-                    </Text>
-                    <TextInput
-                      style={{
-                        width: 76,
-                        height: 52,
-                        backgroundColor: colors.field,
-                        borderRadius: radius.input,
-                        textAlign: "center",
-                        fontSize: 18,
-                        fontWeight: "700",
-                        color: colors.text,
-                      }}
-                      placeholder="—"
-                      placeholderTextColor={colors.text2}
-                      keyboardType="number-pad"
-                      value={billingDate}
-                      onChangeText={handleBillingDateChange}
-                    />
-                  </View>
-
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      marginBottom: spacing.lg,
-                    }}
-                  >
-                    <Text
-                      style={{ fontFamily: fontFamily.bold, fontSize: 16, color: colors.text }}
-                    >
-                      Zam olursa haber ver
-                    </Text>
-                    <Toggle value={priceAlertEnabled} onValueChange={setPriceAlertEnabled} />
-                  </View>
-                </ScrollView>
-
-                <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                  <PillButton title="Geç" variant="outline" onPress={handleSkip} style={{ flex: 1 }} />
-                  <PillButton title="Kaydet" onPress={handleSave} style={{ flex: 1 }} />
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
+      <AddSubscriptionSheet
+        plan={reasonPlan}
+        isGuest={!isAuthenticated}
+        onClose={() => setReasonPlan(null)}
+        onSubmit={handleSheetSubmit}
+        onCreateAccount={handleCreateAccountPress}
+      />
 
       {toast}
     </View>

@@ -2,7 +2,7 @@ import { ActivityIndicator, Pressable, Text } from "react-native";
 
 import { useTheme } from "../theme";
 
-const HEIGHT = 56;
+const DEFAULT_HEIGHT = 56;
 
 export function PillButton({
   title,
@@ -10,16 +10,23 @@ export function PillButton({
   variant = "primary",
   disabled = false,
   loading = false,
+  height = DEFAULT_HEIGHT,
   style,
 }) {
-  const { colors, typography, pillRadius } = useTheme();
-  const radius = pillRadius(HEIGHT);
+  const { colors, brand, typography, pillRadius } = useTheme();
+  const radius = pillRadius(height);
 
   const variants = {
     primary: {
       backgroundColor: colors.primary,
       borderWidth: 0,
       textColor: colors.onPrimary,
+    },
+    // Safran vurgu butonu: koyu zeminli ekranlar ve akış sonu (Kaydet) için.
+    accent: {
+      backgroundColor: brand.safran,
+      borderWidth: 0,
+      textColor: brand.ink,
     },
     outline: {
       backgroundColor: "transparent",
@@ -30,7 +37,7 @@ export function PillButton({
     danger: {
       backgroundColor: "transparent",
       borderWidth: 1.5,
-      borderColor: colors.danger,
+      borderColor: brand.biber,
       textColor: colors.danger,
     },
   };
@@ -45,7 +52,7 @@ export function PillButton({
       accessibilityRole="button"
       style={({ pressed }) => [
         {
-          height: HEIGHT,
+          height,
           borderRadius: radius,
           backgroundColor: v.backgroundColor,
           borderWidth: v.borderWidth,

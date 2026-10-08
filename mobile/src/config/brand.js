@@ -2,4 +2,4 @@
 // ve tüm ekranlar otomatik güncellenir.
 
 export const APP_NAME = "erişte";
-export const SLOGAN = "Aboneliklerin, tek sırada.";
+export const SLOGAN = "Bütün aboneliklerin tek kâsede.";

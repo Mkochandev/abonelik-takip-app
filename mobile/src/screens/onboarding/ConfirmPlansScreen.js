@@ -3,12 +3,12 @@ import { ScrollView, Text, View } from "react-native";
 import { Card, Chip, PillButton, ServiceLogo } from "../../components";
 import { useTheme } from "../../theme";
 import { formatSubscriptionPrice } from "../../utils/price";
-import { CatalogStatus, OnboardingLayout } from "./OnboardingLayout";
+import { CatalogStatus, KivirikPrompt, OnboardingLayout } from "./OnboardingLayout";
 import { useOnboarding } from "./OnboardingContext";
 
 export default function ConfirmPlansScreen({ navigation }) {
   const { catalogLoading, catalogError, selectedGroups, chosenPlans, choosePlan } = useOnboarding();
-  const { colors, spacing, typography } = useTheme();
+  const { colors, spacing } = useTheme();
 
   return (
     <OnboardingLayout
@@ -25,10 +25,10 @@ export default function ConfirmPlansScreen({ navigation }) {
         <CatalogStatus />
       ) : (
         <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.md, paddingBottom: spacing.md }}>
-          <Text style={[typography.sectionTitle, { color: colors.text }]}>Planlarını onayla</Text>
-          <Text style={{ color: colors.text2, marginTop: spacing.xs, marginBottom: spacing.md }}>
-            Her servis için en uygun plan seçili. Farklıysa değiştir.
-          </Text>
+          <KivirikPrompt
+            mood="dusunceli"
+            text="Her servis için en uygun planı seçtim. Farklı bir plan kullanıyorsan değiştir."
+          />
 
           <View style={{ gap: spacing.sm }}>
             {selectedGroups.map((group, index) => {

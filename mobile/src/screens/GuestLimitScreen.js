@@ -1,7 +1,7 @@
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { BrandIcon, PillButton } from "../components";
+import { BrandLogo, PillButton } from "../components";
 import { GUEST_LIMIT } from "../storage/guestSubscriptions";
 import { fontFamily, useTheme } from "../theme";
 
@@ -48,7 +48,7 @@ export default function GuestLimitScreen({ navigation }) {
           marginBottom: spacing.lg,
         }}
       >
-        <BrandIcon size={64} />
+        <BrandLogo size={64} variant="biber" />
         <Text
           style={{
             fontFamily: fontFamily.extraBold,

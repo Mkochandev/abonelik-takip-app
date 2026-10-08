@@ -1,5 +1,6 @@
+export { AddSubscriptionSheet } from "./AddSubscriptionSheet";
 export { AppTile } from "./AppTile";
-export { BrandIcon, LogoMark } from "./BrandIcon";
+export { BrandLogo, Kivirik, KivirikBubble, KivirikHead, NoodleBackground } from "./brand";
 export { Card } from "./Card";
 export { CategoryBadge } from "./CategoryBadge";
 export { CategoryTag } from "./CategoryTag";

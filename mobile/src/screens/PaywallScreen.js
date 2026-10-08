@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Purchases from "react-native-purchases";
 
 import * as api from "../api/client";
-import { BrandIcon, Card, PillButton } from "../components";
+import { BrandLogo, Card, PillButton } from "../components";
 import { useAuth } from "../context/AuthContext";
 import { fontFamily, useTheme } from "../theme";
 
@@ -177,7 +177,7 @@ export default function PaywallScreen({ navigation }) {
           marginBottom: spacing.lg,
         }}
       >
-        <BrandIcon size={64} />
+        <BrandLogo size={64} variant="biber" />
         <Text
           style={{
             fontFamily: fontFamily.extraBold,

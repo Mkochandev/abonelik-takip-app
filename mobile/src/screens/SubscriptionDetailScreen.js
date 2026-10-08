@@ -1,44 +1,35 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Text, View } from "react-native";
-import Svg, { Path } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import * as api from "../api/client";
-import { Card, CategoryTag, GroupedList, GroupedListRow, PillButton, ServiceLogo, Toggle } from "../components";
+import {
+  Card,
+  CategoryTag,
+  GroupedList,
+  GroupedListRow,
+  KivirikHead,
+  PillButton,
+  ServiceLogo,
+} from "../components";
 import { useAuth } from "../context/AuthContext";
 import { removeGuestSubscription } from "../storage/guestSubscriptions";
 import { fontFamily, useTheme } from "../theme";
 import { formatAmount, formatSubscriptionPrice } from "../utils/price";
-import { withAccusativeSuffix } from "../utils/turkish";
-
-function ChartUpIcon({ color }) {
-  return (
-    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M4 18l5-6 4 3 7-9M15 6h5v5"
-        stroke={color}
-        strokeWidth={1.8}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
+import { withAccusativeSuffix, withNameGenitive } from "../utils/turkish";
 
 export default function SubscriptionDetailScreen({ navigation, route }) {
   const { subscription } = route.params;
   // Misafir kaydı yalnızca katalog bilgisini taşır; hesaba bağlı alanlar
-  // (neden, sıklık, ödeme günü, zam bildirimi) gösterilmez.
+  // (neden, sıklık, ödeme günü) gösterilmez.
   const isGuest = Boolean(subscription.isGuest);
   const { token } = useAuth();
-  const { colors, spacing, brand } = useTheme();
+  const { colors, spacing } = useTheme();
   const insets = useSafeAreaInsets();
 
   const [catalogItem, setCatalogItem] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [priceAlertEnabled, setPriceAlertEnabled] = useState(subscription.price_alert_enabled);
-  const [savingAlert, setSavingAlert] = useState(false);
   const [removing, setRemoving] = useState(false);
 
   useEffect(() => {
@@ -69,19 +60,6 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
       isActive = false;
     };
   }, [subscription.catalog_id]);
-
-  async function handleToggleAlert(value) {
-    setPriceAlertEnabled(value);
-    setSavingAlert(true);
-    try {
-      await api.updateUserSubscription(token, subscription.id, { price_alert_enabled: value });
-    } catch (err) {
-      setPriceAlertEnabled(!value);
-      Alert.alert("Hata", err.message);
-    } finally {
-      setSavingAlert(false);
-    }
-  }
 
   function handleCancel() {
     if (catalogItem?.cancel_url) {
@@ -198,7 +176,7 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
                 Bu özellikler için hesap oluştur
               </Text>
               <Text style={{ color: colors.text2, fontSize: 13, marginTop: 2 }}>
-                Neden, kullanım sıklığı, ödeme günü ve zam bildirimi
+                Neden, kullanım sıklığı ve ödeme günü
               </Text>
             </View>
             <Text style={{ color: colors.text2, fontSize: 18 }}>›</Text>
@@ -231,18 +209,7 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
 
       <Card style={{ marginBottom: spacing.lg }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md }}>
-          <View
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: "#FFE3A3",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <ChartUpIcon color={brand.ink} />
-          </View>
+          <KivirikHead size={44} mood="dusunceli" />
           <Text style={{ fontFamily: fontFamily.bold, fontSize: 16, color: colors.text }}>
             Fiyat geçmişi
           </Text>
@@ -254,8 +221,8 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
           <Text style={{ color: colors.danger }}>{error}</Text>
         ) : priceHistory.length === 0 ? (
           <Text style={{ color: colors.text2 }}>
-            Henüz değişiklik yok. Yeni bir fiyat bulunduğunda eski fiyatlar burada tarihleriyle
-            listelenir.
+            Kıvırık bu fiyatı takip ediyor. Henüz değişiklik yok; zam gelirse eski fiyatlar burada
+            tarihleriyle görünür.
           </Text>
         ) : (
           <View style={{ gap: spacing.sm }}>
@@ -276,22 +243,11 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
         )}
       </Card>
 
-      {!isGuest ? (
-        <Card style={{ marginBottom: spacing.lg }}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Text style={{ fontFamily: fontFamily.bold, fontSize: 16, color: colors.text }}>
-              Zam olursa haber ver
-            </Text>
-            <Toggle value={priceAlertEnabled} onValueChange={handleToggleAlert} disabled={savingAlert} />
-          </View>
-        </Card>
-      ) : null}
-
       {catalogItem?.cancel_url ? (
         <View>
           <PillButton title="Aboneliği iptal et" variant="danger" onPress={handleCancel} />
           <Text style={{ color: colors.text2, fontSize: 12, textAlign: "center", marginTop: spacing.sm }}>
-            İptal sayfası tarayıcıda açılır
+            {withNameGenitive(subscription.app_name)} iptal sayfası tarayıcıda açılır
           </Text>
         </View>
       ) : null}
@@ -304,15 +260,22 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
           alignItems: "center",
           justifyContent: "center",
           minHeight: 48,
-          marginTop: spacing.md,
+          marginTop: spacing.sm,
           opacity: pressed ? 0.6 : 1,
         })}
       >
         {removing ? (
-          <ActivityIndicator color={brand.mercan} />
+          <ActivityIndicator color={colors.text2} />
         ) : (
-          <Text style={{ color: brand.mercan, fontWeight: "700", fontSize: 15.5 }}>
-            Aboneliği kaldır
+          <Text
+            style={{
+              color: colors.text2,
+              fontWeight: "600",
+              fontSize: 14.5,
+              textDecorationLine: "underline",
+            }}
+          >
+            Takip listesinden kaldır
           </Text>
         )}
       </Pressable>
