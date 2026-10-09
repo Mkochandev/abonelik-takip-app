@@ -9,6 +9,7 @@ const {
   getEffectivePlan,
   getSubscriptionCount,
   lockUserAndGetPlan,
+  syncPlanFromRevenueCat,
   withTransaction,
 } = require("../services/planService");
 
@@ -348,6 +349,12 @@ router.post("/eriste-premium", async (req, res) => {
   const billingDate = billing_cycle === "yearly" && !billingMonth ? null : billing.billing_date;
 
   try {
+    // Kayıtlı plan Premium değilse (webhook gelmemiş ya da kayıtlı bitiş
+    // tarihi yenilemeden önce geçmiş) RevenueCat'e bir kez sorulur.
+    if ((await getEffectivePlan(req.user.id)).plan !== "premium") {
+      await syncPlanFromRevenueCat(req.user.id).catch(() => {});
+    }
+
     const status = await withTransaction(async (client) => {
       const { plan } = await lockUserAndGetPlan(client, req.user.id);
 

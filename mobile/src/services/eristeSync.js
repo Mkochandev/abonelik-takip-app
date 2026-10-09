@@ -12,22 +12,30 @@ import { rescheduleAll } from "./reminders";
 
 const ENTITLEMENT_ID = "premium";
 
-// Android'de ürün kimliği "premium_aylik:taban-plan" biçiminde olabilir.
-function cycleForProduct(productId) {
+// Ürünün dönemi. Önce bilinen ürün kimlikleri (Android'de
+// "premium_aylik:taban-plan" biçiminde olabilir), sonra paket türü, en son
+// ürünün abonelik süresi (ISO 8601: P1M, P1Y). RevenueCat Test Store gibi
+// farklı kimlikli ürünler ("monthly") böylece de tanınır.
+function cycleForProduct(productId, product, packageType) {
   if (productId?.startsWith("premium_yillik")) return "yearly";
   if (productId?.startsWith("premium_aylik")) return "monthly";
+  if (packageType === "ANNUAL") return "yearly";
+  if (packageType === "MONTHLY") return "monthly";
+  const period = product?.subscriptionPeriod;
+  if (period === "P1Y" || period === "P12M") return "yearly";
+  if (period === "P1M" || period === "P4W") return "monthly";
   return null;
 }
 
-// Kullanıcının App Store'da gördüğü fiyat: önce teklif paketlerinden, yoksa
-// ürün sorgusundan.
-async function findStorePrice(productId) {
+// Kullanıcının App Store'da gördüğü ürün (fiyat ve dönem için): önce teklif
+// paketlerinden, yoksa ürün sorgusundan. { product, packageType } ya da null.
+async function findStoreProduct(productId) {
   try {
     const offerings = await Purchases.getOfferings();
     for (const offering of Object.values(offerings.all ?? {})) {
       const pkg = offering.availablePackages.find((item) => item.product.identifier === productId);
       if (pkg) {
-        return { price: pkg.product.price, currency: pkg.product.currencyCode };
+        return { product: pkg.product, packageType: pkg.packageType };
       }
     }
   } catch (err) {
@@ -35,7 +43,14 @@ async function findStorePrice(productId) {
   }
 
   const [product] = await Purchases.getProducts([productId]).catch(() => []);
-  return product ? { price: product.price, currency: product.currencyCode } : null;
+  return product ? { product, packageType: null } : null;
+}
+
+// Yalnızca geliştirmede: eşitlemenin nerede durduğu Metro konsolunda görünsün.
+function devLog(...args) {
+  if (__DEV__) {
+    console.log("[erişte sync]", ...args);
+  }
 }
 
 const listeners = new Set();
@@ -61,12 +76,18 @@ export function syncEristePremium(token, customerInfo) {
         const info = customerInfo ?? (await Purchases.getCustomerInfo());
         const entitlement = info.entitlements.active[ENTITLEMENT_ID];
         if (!entitlement) {
+          devLog("aktif premium entitlement yok");
           return null;
         }
 
-        const billingCycle = cycleForProduct(entitlement.productIdentifier);
-        const storePrice = billingCycle ? await findStorePrice(entitlement.productIdentifier) : null;
-        if (!billingCycle || !storePrice) {
+        const store = await findStoreProduct(entitlement.productIdentifier);
+        const billingCycle = cycleForProduct(
+          entitlement.productIdentifier,
+          store?.product,
+          store?.packageType
+        );
+        if (!store || !billingCycle) {
+          devLog("ürün tanınmadı:", entitlement.productIdentifier, store?.product?.subscriptionPeriod);
           return null;
         }
 
@@ -76,20 +97,22 @@ export function syncEristePremium(token, customerInfo) {
 
         const { status } = await api.syncEristePremium(token, {
           billing_cycle: billingCycle,
-          price: storePrice.price,
-          currency: storePrice.currency,
+          price: store.product.price,
+          currency: store.product.currencyCode,
           billing_date: renewalDate ? renewalDate.getDate() : null,
           billing_month:
             renewalDate && billingCycle === "yearly" ? renewalDate.getMonth() + 1 : null,
         });
 
+        devLog("sunucu:", status, billingCycle, entitlement.productIdentifier);
         if (status === "added" || status === "updated") {
           listeners.forEach((listener) => listener(status));
           rescheduleAll();
         }
         return status;
       } catch (err) {
-        // Sessizce yok say; bir sonraki açılışta tekrar denenir.
+        // Kullanıcıya gösterilmez; bir sonraki açılışta tekrar denenir.
+        devLog("hata:", err.message);
         return null;
       }
     })().finally(() => {
