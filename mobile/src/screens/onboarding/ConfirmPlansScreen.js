@@ -17,7 +17,7 @@ export default function ConfirmPlansScreen({ navigation }) {
         <PillButton
           title="Devam"
           disabled={chosenPlans.length === 0}
-          onPress={() => navigation.navigate("Summary")}
+          onPress={() => navigation.navigate("BillingDays")}
         />
       }
     >

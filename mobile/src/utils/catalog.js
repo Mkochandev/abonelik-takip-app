@@ -1,7 +1,10 @@
 // /api/catalog yanıtı (app_name'e göre gruplu) üzerinde ortak yardımcılar.
 
-function planPriceTry(plan) {
-  return Number(plan.current_price_try ?? plan.current_price);
+// Aylık karşılık (TL): yıllık planların fiyatı 12'ye bölünür ki aylık
+// toplamlar ve plan karşılaştırmaları doğru olsun.
+export function monthlyPriceTry(item) {
+  const price = Number(item.current_price_try ?? item.current_price);
+  return item.billing_cycle === "yearly" ? price / 12 : price;
 }
 
 // Katalog grubunu, ekranların abonelik satırı gibi kullanabileceği düz bir
@@ -29,11 +32,12 @@ export function indexCatalogPlans(catalog) {
 
 export function getCheapestPlan(group) {
   return group.plans.reduce(
-    (cheapest, plan) => (!cheapest || planPriceTry(plan) < planPriceTry(cheapest) ? plan : cheapest),
+    (cheapest, plan) =>
+      !cheapest || monthlyPriceTry(plan) < monthlyPriceTry(cheapest) ? plan : cheapest,
     null
   );
 }
 
 export function sumMonthlyTry(items) {
-  return items.reduce((sum, item) => sum + planPriceTry(item), 0);
+  return items.reduce((sum, item) => sum + monthlyPriceTry(item), 0);
 }

@@ -382,6 +382,10 @@
           <input id="newPlanName" placeholder="plan_name" />
           <input id="newPrice" type="number" step="0.01" placeholder="current_price" required />
           <input id="newCurrency" placeholder="currency (örn. TRY)" />
+          <select id="newBillingCycle">
+            <option value="monthly">Aylık</option>
+            <option value="yearly">Yıllık</option>
+          </select>
           <select id="newCategory"></select>
           <input id="newSourceUrl" placeholder="source_url" />
           <input id="newCancelUrl" placeholder="İptal URL" />
@@ -656,8 +660,13 @@
         const isEditing = editingId === item.id;
 
         const priceCell = isEditing
-          ? `<input class="price-input" type="number" step="0.01" value="${item.current_price}" id="editPriceInput" />`
+          ? `<input class="price-input" type="number" step="0.01" value="${item.current_price}" id="editPriceInput" />
+             <select id="editBillingCycleInput">
+               <option value="monthly"${item.billing_cycle === "yearly" ? "" : " selected"}>Aylık</option>
+               <option value="yearly"${item.billing_cycle === "yearly" ? " selected" : ""}>Yıllık</option>
+             </select>`
           : escapeHtml(item.current_price);
+        const cycleLabel = item.billing_cycle === "yearly" ? " / yıl" : "";
 
         const actionsCell = isEditing
           ? `<button data-action="save" data-id="${item.id}">Kaydet</button>
@@ -685,7 +694,7 @@
           <td>${logoTileHtml(item)}</td>
           <td>${escapeHtml(item.app_name)}${domainHint}</td>
           <td>${escapeHtml(item.plan_name || "")}</td>
-          <td>${priceCell} ${!isEditing ? escapeHtml(item.currency) : ""}</td>
+          <td>${priceCell} ${!isEditing ? escapeHtml(item.currency) + cycleLabel : ""}</td>
           <td>${escapeHtml(item.currency)}</td>
           <td>${categoryCell}</td>
           <td>${cancelUrlCell}</td>
@@ -766,6 +775,7 @@
             method: "PUT",
             body: JSON.stringify({
               current_price: newPrice,
+              billing_cycle: document.getElementById("editBillingCycleInput").value,
               category: newCategory || null,
               cancel_url: newCancelUrl || null,
               domain: newDomain,
@@ -816,6 +826,7 @@
         plan_name: document.getElementById("newPlanName").value.trim() || undefined,
         current_price: document.getElementById("newPrice").value,
         currency: document.getElementById("newCurrency").value.trim() || undefined,
+        billing_cycle: document.getElementById("newBillingCycle").value,
         category: document.getElementById("newCategory").value || undefined,
         source_url: document.getElementById("newSourceUrl").value.trim() || undefined,
         cancel_url: document.getElementById("newCancelUrl").value.trim() || undefined,

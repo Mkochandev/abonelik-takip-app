@@ -19,7 +19,12 @@ export async function setOnboardingDone() {
   await AsyncStorage.setItem(DONE_KEY, "true");
 }
 
-// Taslak: { step, selectedApps: [app_name], planChoices: { app_name: catalog_id } }
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+// Taslak: { step, selectedApps: [app_name], planChoices: { app_name: catalog_id },
+//   billingDays: { app_name: { day, month } | { unknown: true } } }
 export async function loadOnboardingDraft() {
   try {
     const raw = await AsyncStorage.getItem(DRAFT_KEY);
@@ -30,8 +35,8 @@ export async function loadOnboardingDraft() {
     return {
       step: typeof draft.step === "string" ? draft.step : null,
       selectedApps: draft.selectedApps.filter((name) => typeof name === "string"),
-      planChoices:
-        draft.planChoices && typeof draft.planChoices === "object" ? draft.planChoices : {},
+      planChoices: isPlainObject(draft.planChoices) ? draft.planChoices : {},
+      billingDays: isPlainObject(draft.billingDays) ? draft.billingDays : {},
     };
   } catch (err) {
     return null;

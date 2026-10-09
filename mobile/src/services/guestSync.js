@@ -23,10 +23,8 @@ export function syncGuestSubscriptions(token) {
       }
 
       try {
-        const result = await api.bulkAddUserSubscriptions(
-          token,
-          items.map((item) => item.catalog_id)
-        );
+        // Ödeme günü de gider; hesapta zaten olan kaydın günü boşsa doldurulur.
+        const result = await api.bulkAddUserSubscriptions(token, items);
         await clearGuestSubscriptions();
         return result;
       } catch (error) {

@@ -18,8 +18,33 @@ const router = express.Router();
 const MAX_BULK_ITEMS = 50;
 
 const SUBSCRIPTION_WITH_CATALOG_COLUMNS = `us.id, us.started_at, us.reason, us.usage_frequency,
-  us.price_alert_enabled, us.billing_date, sc.id as catalog_id, sc.app_name, sc.plan_name,
-  sc.current_price, sc.currency, sc.category, sc.domain, sc.logo_url`;
+  us.price_alert_enabled, us.billing_date, us.billing_month, sc.id as catalog_id, sc.app_name,
+  sc.plan_name, sc.current_price, sc.currency, sc.billing_cycle, sc.category, sc.domain,
+  sc.logo_url`;
+
+const RETURNING_COLUMNS =
+  "id, catalog_id, started_at, reason, usage_frequency, billing_date, billing_month, price_alert_enabled";
+
+function isIntInRange(value, min, max) {
+  return Number.isInteger(value) && value >= min && value <= max;
+}
+
+// Ödeme günü (1–31) ve yıllık planlar için ayı (1–12) doğrular. Boş değerler
+// null olur; ay, gün olmadan kabul edilmez.
+function parseBillingFields(source) {
+  const day = source?.billing_date ?? null;
+  const month = source?.billing_month ?? null;
+
+  if (day !== null && !isIntInRange(day, 1, 31)) {
+    return { error: "billing_date 1 ile 31 arasında bir tam sayı olmalı" };
+  }
+
+  if (month !== null && (!isIntInRange(month, 1, 12) || day === null)) {
+    return { error: "billing_month 1 ile 12 arasında olmalı ve billing_date ile gönderilmeli" };
+  }
+
+  return { billing_date: day, billing_month: month };
+}
 
 function withPriceTry(row, usdToTryRate) {
   return {
@@ -35,10 +60,16 @@ router.use(requireAuth);
 
 // POST /api/user/subscriptions — giriş yapmış kullanıcı için yeni abonelik seçimi kaydet
 router.post("/", async (req, res) => {
-  const { catalog_id, reason, usage_frequency, billing_date, price_alert_enabled } = req.body;
+  const { catalog_id, reason, usage_frequency, price_alert_enabled } = req.body;
 
   if (!catalog_id) {
     return res.status(400).json({ error: "catalog_id zorunludur" });
+  }
+
+  const billing = parseBillingFields(req.body);
+
+  if (billing.error) {
+    return res.status(400).json({ error: billing.error });
   }
 
   try {
@@ -56,15 +87,17 @@ router.post("/", async (req, res) => {
 
       const { rows } = await client.query(
         `insert into user_subscriptions
-           (user_id, catalog_id, reason, usage_frequency, billing_date, price_alert_enabled)
-         values ($1, $2, $3, $4, $5, coalesce($6, true))
-         returning id, catalog_id, started_at, reason, usage_frequency, billing_date, price_alert_enabled`,
+           (user_id, catalog_id, reason, usage_frequency, billing_date, billing_month,
+            price_alert_enabled)
+         values ($1, $2, $3, $4, $5, $6, coalesce($7, true))
+         returning ${RETURNING_COLUMNS}`,
         [
           req.user.id,
           catalog_id,
           reason || null,
           usage_frequency || null,
-          billing_date || null,
+          billing.billing_date,
+          billing.billing_month,
           price_alert_enabled === undefined ? null : price_alert_enabled,
         ]
       );
@@ -100,11 +133,13 @@ router.post("/", async (req, res) => {
 
 // POST /api/user/subscriptions/bulk — birden çok katalog kaydını tek seferde
 // ekler (onboarding seçimleri ve misafir listesinin hesaba aktarılması).
-// Gövde: { items: [{ catalog_id }] }. Ücretsiz planda toplam FREE_LIMIT'e
-// kadar olanlar gönderim sırasıyla eklenir, kalanlar "limit" ile atlanır;
-// kullanıcıda zaten olanlar "duplicate", katalogda artık bulunmayanlar
-// "not_found" ile atlanır (silinmiş bir kayıt yüzünden misafir listesinin
-// aktarımı sonsuza kadar takılmasın diye 400 yerine atlanır).
+// Gövde: { items: [{ catalog_id, billing_date?, billing_month? }] }. Ücretsiz
+// planda toplam FREE_LIMIT'e kadar olanlar gönderim sırasıyla eklenir,
+// kalanlar "limit" ile atlanır; kullanıcıda zaten olanlar "duplicate",
+// katalogda artık bulunmayanlar "not_found" ile atlanır (silinmiş bir kayıt
+// yüzünden misafir listesinin aktarımı sonsuza kadar takılmasın diye 400
+// yerine atlanır). Zaten olan kaydın ödeme günü boşsa gönderilen gün ona
+// yazılır; misafirde girilen gün hesaba aktarımda kaybolmasın.
 router.post("/bulk", async (req, res) => {
   const items = req.body?.items;
 
@@ -120,6 +155,13 @@ router.post("/bulk", async (req, res) => {
 
   if (rawIds.some((id) => typeof id !== "string" || !UUID_REGEX.test(id))) {
     return res.status(400).json({ error: "Geçersiz catalog_id formatı" });
+  }
+
+  const billingByIndex = items.map(parseBillingFields);
+  const billingError = billingByIndex.find((billing) => billing.error);
+
+  if (billingError) {
+    return res.status(400).json({ error: billingError.error });
   }
 
   // Postgres uuid'leri küçük harfle döndürür; Set karşılaştırmaları tutsun.
@@ -143,31 +185,51 @@ router.post("/bulk", async (req, res) => {
 
       let count = owned.size;
       const toInsert = [];
+      const toFillBilling = [];
       const skippedItems = [];
 
-      for (const catalogId of catalogIds) {
+      catalogIds.forEach((catalogId, index) => {
+        const billing = billingByIndex[index];
+
         if (owned.has(catalogId)) {
           skippedItems.push({ catalog_id: catalogId, reason: "duplicate" });
+          if (billing.billing_date !== null) {
+            toFillBilling.push({ catalogId, ...billing });
+          }
         } else if (!existsInCatalog.has(catalogId)) {
           skippedItems.push({ catalog_id: catalogId, reason: "not_found" });
         } else if (plan === "free" && count >= FREE_LIMIT) {
           skippedItems.push({ catalog_id: catalogId, reason: "limit" });
         } else {
-          toInsert.push(catalogId);
+          toInsert.push({ catalogId, ...billing });
           owned.add(catalogId);
           count += 1;
         }
-      }
+      });
 
       if (toInsert.length > 0) {
         await client.query(
-          `insert into user_subscriptions (user_id, catalog_id)
-           select $1, unnest($2::uuid[])`,
-          [req.user.id, toInsert]
+          `insert into user_subscriptions (user_id, catalog_id, billing_date, billing_month)
+           select $1::uuid, * from unnest($2::uuid[], $3::int[], $4::int[])`,
+          [
+            req.user.id,
+            toInsert.map((item) => item.catalogId),
+            toInsert.map((item) => item.billing_date),
+            toInsert.map((item) => item.billing_month),
+          ]
         );
       }
 
-      return { addedIds: toInsert, skipped: skippedItems };
+      for (const item of toFillBilling) {
+        await client.query(
+          `update user_subscriptions
+           set billing_date = $3, billing_month = $4
+           where user_id = $1 and catalog_id = $2 and billing_date is null`,
+          [req.user.id, item.catalogId, item.billing_date, item.billing_month]
+        );
+      }
+
+      return { addedIds: toInsert.map((item) => item.catalogId), skipped: skippedItems };
     });
 
     let added = [];
@@ -221,15 +283,25 @@ router.get("/", async (req, res) => {
   }
 });
 
-// PATCH /api/user/subscriptions/:id — reason, price_alert_enabled ve
-// billing_date alanlarını günceller (gönderilmeyen alanlar korunur)
+// PATCH /api/user/subscriptions/:id — reason, price_alert_enabled ve ödeme
+// günü alanlarını günceller (gönderilmeyen alanlar korunur). billing_date
+// gönderilirse billing_month da onunla birlikte yazılır (aylık planda
+// gönderilmez, null olur); billing_date: null ödeme gününü temizler.
 router.patch("/:id", async (req, res) => {
-  const { reason, price_alert_enabled, billing_date } = req.body;
+  const { reason, price_alert_enabled } = req.body;
+  const hasBilling = req.body.billing_date !== undefined;
+  const billing = parseBillingFields(req.body);
+
+  if (billing.error) {
+    return res.status(400).json({ error: billing.error });
+  }
 
   const params = [
     reason === undefined ? null : reason,
     price_alert_enabled === undefined ? null : price_alert_enabled,
-    billing_date === undefined ? null : billing_date,
+    hasBilling,
+    billing.billing_date,
+    billing.billing_month,
   ];
 
   try {
@@ -237,9 +309,10 @@ router.patch("/:id", async (req, res) => {
       `update user_subscriptions
        set reason = coalesce($1, reason),
            price_alert_enabled = coalesce($2, price_alert_enabled),
-           billing_date = coalesce($3, billing_date)
-       where id = $4 and user_id = $5
-       returning id, catalog_id, started_at, reason, usage_frequency, billing_date, price_alert_enabled`,
+           billing_date = case when $3::boolean then $4::int else billing_date end,
+           billing_month = case when $3::boolean then $5::int else billing_month end
+       where id = $6 and user_id = $7
+       returning ${RETURNING_COLUMNS}`,
       [...params, req.params.id, req.user.id]
     );
 

@@ -137,7 +137,16 @@ router.get("/", async (req, res) => {
 
 // POST /api/admin/catalog — yeni app/plan ekle
 router.post("/", async (req, res) => {
-  const { app_name, plan_name, current_price, currency, source_url, category, cancel_url } = req.body;
+  const {
+    app_name,
+    plan_name,
+    current_price,
+    currency,
+    billing_cycle,
+    source_url,
+    category,
+    cancel_url,
+  } = req.body;
 
   if (!app_name || current_price === undefined || current_price === null) {
     return res.status(400).json({ error: "app_name ve current_price zorunludur" });
@@ -154,8 +163,8 @@ router.post("/", async (req, res) => {
     const { rows } = await db.query(
       `insert into subscriptions_catalog
          (app_name, plan_name, current_price, currency, source_url, category, cancel_url,
-          domain, logo_url)
-       values ($1, $2, $3, coalesce($4, 'TRY'), $5, $6, $7, $8, $9)
+          domain, logo_url, billing_cycle)
+       values ($1, $2, $3, coalesce($4, 'TRY'), $5, $6, $7, $8, $9, coalesce($10, 'monthly'))
        returning *`,
       [
         app_name,
@@ -167,13 +176,14 @@ router.post("/", async (req, res) => {
         cancel_url || null,
         domain.value,
         logoUrl.value,
+        billing_cycle || null,
       ]
     );
 
     res.status(201).json(rows[0]);
   } catch (error) {
     if (error.code === "23514") {
-      return res.status(400).json({ error: "Geçersiz category değeri" });
+      return res.status(400).json({ error: "Geçersiz category veya billing_cycle değeri" });
     }
 
     res.status(500).json({ error: error.message });
@@ -192,6 +202,7 @@ router.put("/:id", async (req, res) => {
     last_checked_at,
     category,
     cancel_url,
+    billing_cycle,
   } = req.body;
 
   const params = [
@@ -203,6 +214,7 @@ router.put("/:id", async (req, res) => {
     last_checked_at,
     category,
     cancel_url,
+    billing_cycle,
   ].map((value) => (value === undefined ? null : value));
 
   const hasDomain = req.body.domain !== undefined;
@@ -225,9 +237,10 @@ router.put("/:id", async (req, res) => {
            last_checked_at = coalesce($6, last_checked_at),
            category = coalesce($7, category),
            cancel_url = coalesce($8, cancel_url),
-           domain = case when $9::boolean then $10 else domain end,
-           logo_url = case when $11::boolean then $12 else logo_url end
-       where id = $13
+           billing_cycle = coalesce($9, billing_cycle),
+           domain = case when $10::boolean then $11 else domain end,
+           logo_url = case when $12::boolean then $13 else logo_url end
+       where id = $14
        returning *`,
       [...params, hasDomain, domain.value, hasLogoUrl, logoUrl.value, req.params.id]
     );
@@ -243,7 +256,7 @@ router.put("/:id", async (req, res) => {
     }
 
     if (error.code === "23514") {
-      return res.status(400).json({ error: "Geçersiz category değeri" });
+      return res.status(400).json({ error: "Geçersiz category veya billing_cycle değeri" });
     }
 
     res.status(500).json({ error: error.message });

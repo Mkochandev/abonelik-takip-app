@@ -32,6 +32,7 @@ function groupByAppName(rows, usdToTryRate) {
           ? Number((Number(row.current_price) * usdToTryRate).toFixed(2))
           : Number(row.current_price),
       currency: row.currency,
+      billing_cycle: row.billing_cycle,
       category: row.category,
       domain: row.domain ?? null,
       logo_url: row.logo_url ?? null,

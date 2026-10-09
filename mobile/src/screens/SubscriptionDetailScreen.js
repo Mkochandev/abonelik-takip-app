@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import * as api from "../api/client";
 import {
+  BillingDaySheet,
   Card,
   CategoryTag,
   GroupedList,
@@ -13,20 +14,23 @@ import {
   ServiceLogo,
 } from "../components";
 import { useAuth } from "../context/AuthContext";
-import { removeGuestSubscription } from "../storage/guestSubscriptions";
+import { removeGuestSubscription, updateGuestSubscription } from "../storage/guestSubscriptions";
 import { fontFamily, useTheme } from "../theme";
+import { formatBillingDay, periodLabel } from "../utils/billing";
 import { formatAmount, formatSubscriptionPrice } from "../utils/price";
-import { withAccusativeSuffix, withNameGenitive } from "../utils/turkish";
 
 export default function SubscriptionDetailScreen({ navigation, route }) {
-  const { subscription } = route.params;
-  // Misafir kaydı yalnızca katalog bilgisini taşır; hesaba bağlı alanlar
-  // (neden, sıklık, ödeme günü) gösterilmez.
-  const isGuest = Boolean(subscription.isGuest);
+  const { subscription: initialSubscription } = route.params;
+  // Misafir kaydı katalog bilgisini ve ödeme gününü taşır; neden ve
+  // kullanım sıklığı hesap gerektirir.
+  const isGuest = Boolean(initialSubscription.isGuest);
   const { token } = useAuth();
   const { colors, spacing } = useTheme();
   const insets = useSafeAreaInsets();
 
+  // Ödeme günü bu ekranda düzenlenebildiği için kayıt yerel state'te.
+  const [subscription, setSubscription] = useState(initialSubscription);
+  const [billingSheetOpen, setBillingSheetOpen] = useState(false);
   const [catalogItem, setCatalogItem] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -81,6 +85,17 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
       setRemoving(false);
       Alert.alert("Hata", err.message);
     }
+  }
+
+  // Ana sayfa odaklandığında listeyi yeniden yüklediği için yalnızca yerel
+  // kayıt güncellenir.
+  async function saveBillingDay(item, updates) {
+    if (isGuest) {
+      await updateGuestSubscription(item.catalog_id, updates);
+    } else {
+      await api.updateUserSubscription(token, item.id, updates);
+    }
+    setSubscription((current) => ({ ...current, ...updates }));
   }
 
   function handleRemovePress() {
@@ -152,7 +167,7 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
             <Text style={{ fontFamily: fontFamily.extraBold, fontSize: 40, color: colors.text }}>
               {price.primary}
             </Text>
-            <Text style={{ color: colors.text2, fontSize: 15 }}>/ ay</Text>
+            <Text style={{ color: colors.text2, fontSize: 15 }}>{periodLabel(subscription)}</Text>
           </View>
           {subscription.category ? <CategoryTag category={subscription.category} /> : null}
         </View>
@@ -160,6 +175,21 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
           <Text style={{ color: colors.text2, marginTop: 2 }}>{price.secondary}</Text>
         ) : null}
       </Card>
+
+      <GroupedList style={{ marginBottom: spacing.sm }}>
+        <GroupedListRow
+          onPress={() => setBillingSheetOpen(true)}
+          style={{ justifyContent: "space-between" }}
+        >
+          <Text style={{ color: colors.text2 }}>Ödeme günü</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+            <Text style={{ color: colors.text, fontWeight: "600" }}>
+              {formatBillingDay(subscription) ?? "Ekle"}
+            </Text>
+            <Text style={{ color: colors.text2, fontSize: 18 }}>›</Text>
+          </View>
+        </GroupedListRow>
+      </GroupedList>
 
       {isGuest ? (
         <GroupedList style={{ marginBottom: spacing.lg }}>
@@ -176,7 +206,7 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
                 Bu özellikler için hesap oluştur
               </Text>
               <Text style={{ color: colors.text2, fontSize: 13, marginTop: 2 }}>
-                Neden, kullanım sıklığı ve ödeme günü
+                Neden ve kullanım sıklığı
               </Text>
             </View>
             <Text style={{ color: colors.text2, fontSize: 18 }}>›</Text>
@@ -188,14 +218,6 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
             <Text style={{ color: colors.text2 }}>Kullanım sıklığı</Text>
             <Text style={{ color: colors.text, fontWeight: "600" }}>
               {subscription.usage_frequency || "—"}
-            </Text>
-          </GroupedListRow>
-          <GroupedListRow style={{ justifyContent: "space-between" }}>
-            <Text style={{ color: colors.text2 }}>Ödeme günü</Text>
-            <Text style={{ color: colors.text, fontWeight: "600" }}>
-              {subscription.billing_date
-                ? `Her ayın ${withAccusativeSuffix(subscription.billing_date)}`
-                : "—"}
             </Text>
           </GroupedListRow>
           <GroupedListRow style={{ justifyContent: "space-between" }}>
@@ -247,7 +269,7 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
         <View>
           <PillButton title="Aboneliği iptal et" variant="danger" onPress={handleCancel} />
           <Text style={{ color: colors.text2, fontSize: 12, textAlign: "center", marginTop: spacing.sm }}>
-            {withNameGenitive(subscription.app_name)} iptal sayfası tarayıcıda açılır
+            {subscription.app_name} — iptal sayfası tarayıcıda açılır
           </Text>
         </View>
       ) : null}
@@ -279,6 +301,12 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
           </Text>
         )}
       </Pressable>
+
+      <BillingDaySheet
+        items={billingSheetOpen ? [subscription] : null}
+        onSave={saveBillingDay}
+        onClose={() => setBillingSheetOpen(false)}
+      />
     </ScrollView>
   );
 }

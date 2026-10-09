@@ -23,6 +23,7 @@ import {
   removeGuestSubscription,
 } from "../storage/guestSubscriptions";
 import { fontFamily, useTheme } from "../theme";
+import { isYearly } from "../utils/billing";
 import { formatSubscriptionPrice } from "../utils/price";
 
 export default function CatalogScreen({ navigation }) {
@@ -180,8 +181,8 @@ export default function CatalogScreen({ navigation }) {
     }
   }
 
-  // Misafir: plan yalnızca bu cihazdaki listeye eklenir.
-  async function addGuestPlan() {
+  // Misafir: plan yalnızca bu cihazdaki listeye, ödeme günüyle eklenir.
+  async function addGuestPlan(details) {
     const plan = reasonPlan;
     if (!plan) {
       return;
@@ -189,7 +190,11 @@ export default function CatalogScreen({ navigation }) {
     setReasonPlan(null);
 
     try {
-      const result = await addGuestSubscription(plan.id);
+      const result = await addGuestSubscription({
+        catalog_id: plan.id,
+        billing_date: details.billing_date,
+        billing_month: details.billing_month,
+      });
       if (result.reason === "limit") {
         navigation.navigate("GuestLimit");
         return;
@@ -208,8 +213,8 @@ export default function CatalogScreen({ navigation }) {
     });
   }
 
-  // Kıvırık'ın sorduğu ekleme sayfası bitti. Misafir verisi yalnızca
-  // catalog_id tuttuğu için cevaplar misafirde saklanmaz.
+  // Kıvırık'ın sorduğu ekleme sayfası bitti. Misafirde yalnızca ödeme günü
+  // saklanır; neden ve kullanım sıklığı hesap gerektirir.
   function handleSheetSubmit(details) {
     const plan = reasonPlan;
     if (!plan) {
@@ -217,7 +222,7 @@ export default function CatalogScreen({ navigation }) {
     }
 
     if (!isAuthenticated) {
-      addGuestPlan();
+      addGuestPlan(details);
       return;
     }
 
@@ -366,6 +371,7 @@ export default function CatalogScreen({ navigation }) {
                                 }}
                               >
                                 {price.primary}
+                                {isYearly(plan) ? " / yıl" : ""}
                               </Text>
                               {price.secondary ? (
                                 <Text style={{ fontSize: 13, color: colors.text2, marginTop: 2 }}>

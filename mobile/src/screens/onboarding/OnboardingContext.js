@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 
 import * as api from "../../api/client";
 import { finishOnboarding, saveOnboardingDraft } from "../../storage/onboarding";
+import { isYearly } from "../../utils/billing";
 import { getCheapestPlan, toCatalogEntry } from "../../utils/catalog";
 import { ONBOARDING_STEPS } from "./steps";
 
@@ -19,6 +20,8 @@ export function OnboardingProvider({ initialDraft, children }) {
   const [selectedApps, setSelectedApps] = useState(initialDraft?.selectedApps ?? []);
   // app_name -> catalog_id (seçilmemişse en ucuz plan varsayılır)
   const [planChoices, setPlanChoices] = useState(initialDraft?.planChoices ?? {});
+  // app_name -> { day, month } ya da { unknown: true } ("Bilmiyorum")
+  const [billingDays, setBillingDays] = useState(initialDraft?.billingDays ?? {});
   const finishedRef = useRef(false);
 
   async function loadCatalog() {
@@ -50,19 +53,29 @@ export function OnboardingProvider({ initialDraft, children }) {
     if (finishedRef.current) {
       return;
     }
-    saveOnboardingDraft({ step, selectedApps, planChoices }).catch(() => {});
-  }, [step, selectedApps, planChoices]);
+    saveOnboardingDraft({ step, selectedApps, planChoices, billingDays }).catch(() => {});
+  }, [step, selectedApps, planChoices, billingDays]);
 
   const value = useMemo(() => {
     const groupsByName = new Map(catalog.map((group) => [group.app_name, group]));
     const selectedGroups = selectedApps.map((name) => groupsByName.get(name)).filter(Boolean);
 
     // Seçilen her servis için onaylanan plan, abonelik satırı biçiminde.
+    // Ödeme günü yalnızca planın dönemine uyuyorsa eklenir (yıllık planda ay
+    // da girilmiş olmalı; plan sonradan değişirse eksik gün sayılır).
     const chosenPlans = selectedGroups.map((group) => {
       const plan =
         group.plans.find((candidate) => candidate.id === planChoices[group.app_name]) ??
         getCheapestPlan(group);
-      return toCatalogEntry(group, plan);
+      const entry = toCatalogEntry(group, plan);
+      const billing = billingDays[group.app_name];
+      const yearly = isYearly(entry);
+      const valid = Boolean(billing?.day) && (!yearly || Boolean(billing?.month));
+      return {
+        ...entry,
+        billing_date: valid ? billing.day : null,
+        billing_month: valid && yearly ? billing.month : null,
+      };
     });
 
     return {
@@ -85,6 +98,22 @@ export function OnboardingProvider({ initialDraft, children }) {
       choosePlan(appName, catalogId) {
         setPlanChoices((current) => ({ ...current, [appName]: catalogId }));
       },
+      billingDays,
+      // value: { day, month }, { unknown: true } ya da null (temizle)
+      setBillingDay(appName, value) {
+        setBillingDays((current) => {
+          const next = { ...current };
+          if (value) {
+            next[appName] = value;
+          } else {
+            delete next[appName];
+          }
+          return next;
+        });
+      },
+      clearBillingDays() {
+        setBillingDays({});
+      },
       // Onboarding'i bitirir (onboarding_done = true, taslak silinir) ve kök
       // stack'i Ana sayfaya sıfırlar. extraRoutes, örn. ["Paywall"], Ana
       // sayfanın üstüne açılır.
@@ -95,7 +124,7 @@ export function OnboardingProvider({ initialDraft, children }) {
         navigation.getParent()?.reset({ index: routes.length - 1, routes });
       },
     };
-  }, [catalog, catalogLoading, catalogError, selectedApps, planChoices]);
+  }, [catalog, catalogLoading, catalogError, selectedApps, planChoices, billingDays]);
 
   return <OnboardingContext.Provider value={value}>{children}</OnboardingContext.Provider>;
 }

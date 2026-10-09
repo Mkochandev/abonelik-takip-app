@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import * as api from "../api/client";
 import {
+  BillingDaySheet,
   Card,
   CategoryBadge,
   Chip,
@@ -16,10 +17,15 @@ import {
   ServiceLogo,
 } from "../components";
 import { useAuth } from "../context/AuthContext";
-import { GUEST_LIMIT, getGuestSubscriptions } from "../storage/guestSubscriptions";
+import {
+  GUEST_LIMIT,
+  getGuestSubscriptions,
+  updateGuestSubscription,
+} from "../storage/guestSubscriptions";
 import { dismissGuestBanner, shouldShowGuestBanner } from "../storage/onboarding";
 import { fontFamily, useTheme } from "../theme";
-import { indexCatalogPlans } from "../utils/catalog";
+import { getNextBillingInfo, hasBillingDay, isYearly } from "../utils/billing";
+import { indexCatalogPlans, monthlyPriceTry } from "../utils/catalog";
 import { formatSubscriptionPrice, formatTRY } from "../utils/price";
 
 // Misafir listesi yalnızca catalog_id tutar; ad, fiyat, logo ve kategori
@@ -35,6 +41,8 @@ async function loadGuestSubscriptions() {
       ...plans.get(item.catalog_id),
       id: item.catalog_id,
       added_at: item.added_at,
+      billing_date: item.billing_date ?? null,
+      billing_month: item.billing_month ?? null,
       isGuest: true,
     }));
 }
@@ -50,28 +58,13 @@ function chunkPairs(items) {
   return pairs;
 }
 
-function getNextBillingInfo(billingDate) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  function clampedDate(year, month) {
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    return new Date(year, month, Math.min(billingDate, daysInMonth));
-  }
-
-  let next = clampedDate(today.getFullYear(), today.getMonth());
-  if (next < today) {
-    const month = today.getMonth() + 1;
-    next = clampedDate(today.getFullYear() + (month > 11 ? 1 : 0), month % 12);
-  }
-
-  const daysLeft = Math.round((next - today) / (1000 * 60 * 60 * 24));
-  const dateLabel = next.toLocaleDateString("tr-TR", {
-    day: "numeric",
-    month: "long",
-  });
-
-  return { daysLeft, dateLabel, month: next.getMonth() };
+// Ödeme günü olan abonelikler, bir sonraki ödemeye göre sıralı (aylık/yıllık
+// ve ay sonu durumu utils/billing'de).
+function getUpcomingPayments(subscriptions) {
+  return subscriptions
+    .filter(hasBillingDay)
+    .map((sub) => ({ ...sub, ...getNextBillingInfo(sub) }))
+    .sort((a, b) => a.daysLeft - b.daysLeft);
 }
 
 // Kıvırık'ın ana sayfadaki mesajı; liste yüklenmediyse null.
@@ -80,10 +73,7 @@ function getKivirikMessage(subscriptions) {
     return "Kâsen boş. Katalogdan ilk aboneliğini ekle.";
   }
 
-  const payments = subscriptions
-    .filter((sub) => sub.billing_date)
-    .map((sub) => ({ ...sub, ...getNextBillingInfo(sub.billing_date) }))
-    .sort((a, b) => a.daysLeft - b.daysLeft);
+  const payments = getUpcomingPayments(subscriptions);
   const first = payments[0];
 
   if (!first || first.daysLeft > 7) {
@@ -108,6 +98,8 @@ export default function HomeScreen({ navigation }) {
   const [error, setError] = useState(null);
   const [showGuestBanner, setShowGuestBanner] = useState(false);
   const [bubbleOpen, setBubbleOpen] = useState(true);
+  // Eksik ödeme günü akışında sorulacak abonelikler (null: kapalı).
+  const [billingFlowItems, setBillingFlowItems] = useState(null);
   const scrollRef = useRef(null);
   const subsSectionY = useRef(0);
 
@@ -156,21 +148,16 @@ export default function HomeScreen({ navigation }) {
     }, [token])
   );
 
-  const totalTry = subscriptions.reduce(
-    (sum, sub) => sum + Number(sub.current_price_try ?? sub.current_price),
-    0
-  );
+  // Yıllık planlar aylık toplama 12'de biri olarak girer.
+  const totalTry = subscriptions.reduce((sum, sub) => sum + monthlyPriceTry(sub), 0);
   const hasUsd = subscriptions.some((sub) => sub.currency === "USD");
 
-  const upcomingPayments = subscriptions
-    .filter((sub) => sub.billing_date)
-    .map((sub) => ({ ...sub, ...getNextBillingInfo(sub.billing_date) }))
-    .sort((a, b) => a.daysLeft - b.daysLeft)
-    .slice(0, 3);
+  const upcomingPayments = getUpcomingPayments(subscriptions).slice(0, 3);
+  const missingBilling = loading || error ? [] : subscriptions.filter((sub) => !hasBillingDay(sub));
 
   const categoryTotals = subscriptions.reduce((totals, sub) => {
     const key = sub.category || "Diğer";
-    totals[key] = (totals[key] || 0) + Number(sub.current_price_try ?? sub.current_price);
+    totals[key] = (totals[key] || 0) + monthlyPriceTry(sub);
     return totals;
   }, {});
   const categoryEntries = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
@@ -184,6 +171,19 @@ export default function HomeScreen({ navigation }) {
 
   function scrollToSubscriptions() {
     scrollRef.current?.scrollTo({ y: subsSectionY.current, animated: true });
+  }
+
+  // Eksik gün akışında her kayıt ayrı ayrı kaydedilir; liste yerinde
+  // güncellenir ki balon ve yaklaşan ödemeler hemen değişsin.
+  async function saveBillingDay(item, updates) {
+    if (item.isGuest) {
+      await updateGuestSubscription(item.catalog_id, updates);
+    } else {
+      await api.updateUserSubscription(token, item.id, updates);
+    }
+    setSubscriptions((current) =>
+      current.map((sub) => (sub.id === item.id ? { ...sub, ...updates } : sub))
+    );
   }
 
   function handleDismissGuestBanner() {
@@ -253,6 +253,30 @@ export default function HomeScreen({ navigation }) {
           tail="right"
           style={{ alignSelf: "flex-end", maxWidth: 300, marginBottom: SECTION_GAP }}
         />
+      ) : null}
+
+      {missingBilling.length > 0 ? (
+        <Pressable
+          onPress={() => setBillingFlowItems(missingBilling)}
+          accessibilityRole="button"
+          style={({ pressed }) => ({
+            flexDirection: "row",
+            alignItems: "flex-end",
+            gap: spacing.sm,
+            marginBottom: SECTION_GAP,
+            opacity: pressed ? 0.8 : 1,
+          })}
+        >
+          <KivirikHead size={48} mood="dusunceli" />
+          <KivirikBubble tail="left" style={{ flex: 1 }}>
+            <Text style={{ color: "#F5F3F7", fontSize: 15, fontWeight: "600", lineHeight: 21 }}>
+              {missingBilling.length} aboneliğinin ödeme günü eksik. Ekle de sana haber vereyim.
+            </Text>
+            <Text style={{ color: brand.safran, fontWeight: "700", marginTop: spacing.xs }}>
+              Günleri ekle ›
+            </Text>
+          </KivirikBubble>
+        </Pressable>
       ) : null}
 
       {!isAuthenticated && showGuestBanner ? (
@@ -496,7 +520,10 @@ export default function HomeScreen({ navigation }) {
                     ) : null}
                   </View>
                   <View style={{ alignItems: "flex-end" }}>
-                    <Text style={{ fontWeight: "700", color: colors.text }}>{price.primary}</Text>
+                    <Text style={{ fontWeight: "700", color: colors.text }}>
+                      {price.primary}
+                      {isYearly(item) ? " / yıl" : ""}
+                    </Text>
                     {price.secondary ? (
                       <Text style={{ fontSize: 12, color: colors.text2 }}>{price.secondary}</Text>
                     ) : null}
@@ -510,6 +537,12 @@ export default function HomeScreen({ navigation }) {
           </GroupedList>
         )}
       </View>
+
+      <BillingDaySheet
+        items={billingFlowItems}
+        onSave={saveBillingDay}
+        onClose={() => setBillingFlowItems(null)}
+      />
     </ScrollView>
   );
 }

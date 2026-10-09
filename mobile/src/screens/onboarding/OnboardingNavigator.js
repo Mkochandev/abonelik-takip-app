@@ -1,5 +1,6 @@
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
+import BillingDaysScreen from "./BillingDaysScreen";
 import ConfirmPlansScreen from "./ConfirmPlansScreen";
 import { OnboardingProvider } from "./OnboardingContext";
 import SaveScreen from "./SaveScreen";
@@ -19,6 +20,7 @@ export default function OnboardingNavigator({ route }) {
         <Stack.Screen name="Welcome" component={WelcomeScreen} />
         <Stack.Screen name="SelectServices" component={SelectServicesScreen} />
         <Stack.Screen name="ConfirmPlans" component={ConfirmPlansScreen} />
+        <Stack.Screen name="BillingDays" component={BillingDaysScreen} />
         <Stack.Screen name="Summary" component={SummaryScreen} />
         <Stack.Screen name="Save" component={SaveScreen} />
       </Stack.Navigator>

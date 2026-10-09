@@ -13,7 +13,9 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { fontFamily, useTheme } from "../theme";
+import { isYearly, periodLabel } from "../utils/billing";
 import { formatSubscriptionPrice } from "../utils/price";
+import { BillingDayPicker } from "./BillingDayPicker";
 import { KivirikBubble, KivirikHead } from "./brand";
 import { PillButton } from "./PillButton";
 import { ServiceLogo } from "./ServiceLogo";
@@ -48,8 +50,6 @@ const USAGE_FREQUENCIES = [
   { label: "Nadiren, aslında unuttum", value: "Nadiren" },
 ];
 
-const BILLING_DAYS = [1, 5, 10, 15, 20, 25, 28];
-const OTHER_DAY = "other";
 const STEP_COUNT = 3;
 
 function OptionButton({ label, selected, onPress, style }) {
@@ -110,9 +110,9 @@ function SheetContent({ plan, isGuest, onClose, onSubmit, onCreateAccount }) {
   const [selectedReason, setSelectedReason] = useState(null);
   const [reasonText, setReasonText] = useState("");
   const [usageFrequency, setUsageFrequency] = useState(null);
-  const [billingChoice, setBillingChoice] = useState(null);
-  const [otherDay, setOtherDay] = useState("");
+  const [billing, setBilling] = useState({ day: null, month: null });
 
+  const yearly = isYearly(plan);
   const price = formatSubscriptionPrice(plan);
   const reasonOptions = REASON_OPTIONS[plan.category] || [];
   const isLastStep = step === STEP_COUNT - 1;
@@ -122,7 +122,7 @@ function SheetContent({ plan, isGuest, onClose, onSubmit, onCreateAccount }) {
     // ek seçmemek için eksiz kalıplar kullanılır.
     `${plan.app_name} — ne için kullanıyorsun?`,
     "Ne sıklıkla kullanıyorsun?",
-    "Ayın kaçında ödüyorsun?",
+    yearly ? "Yılın hangi günü ödüyorsun?" : "Ayın kaçında ödüyorsun?",
   ];
 
   function handleReasonPress(label) {
@@ -149,39 +149,32 @@ function SheetContent({ plan, isGuest, onClose, onSubmit, onCreateAccount }) {
     } else if (step === 1) {
       setUsageFrequency(null);
     } else {
-      setBillingChoice(null);
-      setOtherDay("");
+      setBilling({ day: null, month: null });
     }
   }
 
   // overrides: "Geç" ile son adım boş bırakıldığında state güncellenmeden
   // kaydedilebilsin diye.
   function save(overrides = {}) {
-    const choice = "billingChoice" in overrides ? overrides.billingChoice : billingChoice;
-    let billingDate = null;
+    const value = overrides.billing ?? billing;
 
-    if (choice === OTHER_DAY) {
-      const parsed = Number(otherDay);
-      if (otherDay.trim() === "" || !Number.isInteger(parsed) || parsed < 1 || parsed > 31) {
-        Alert.alert("Hata", "Ödeme günü 1 ile 31 arasında olmalı");
-        return;
-      }
-      billingDate = parsed;
-    } else if (choice != null) {
-      billingDate = choice;
+    if (yearly && value.day && !value.month) {
+      Alert.alert("Ay eksik", "Yıllık plan için ödeme ayını da seç ya da bu adımı geç.");
+      return;
     }
 
     onSubmit({
       reason: reasonText.trim() || null,
       usage_frequency: usageFrequency,
-      billing_date: billingDate,
+      billing_date: value.day,
+      billing_month: yearly && value.day ? value.month : null,
     });
   }
 
   function handleSkip() {
     clearCurrentStep();
     if (isLastStep) {
-      save({ billingChoice: null });
+      save({ billing: { day: null, month: null } });
     } else {
       setStep(step + 1);
     }
@@ -247,7 +240,7 @@ function SheetContent({ plan, isGuest, onClose, onSubmit, onCreateAccount }) {
               {plan.app_name} {plan.plan_name}
             </Text>
             <Text style={{ fontFamily: fontFamily.bold, fontSize: 14, color: colors.text2, marginTop: 2 }}>
-              {price.primary} / ay
+              {price.primary} {periodLabel(plan)}
             </Text>
           </View>
           <ProgressDots step={step} />
@@ -334,42 +327,12 @@ function SheetContent({ plan, isGuest, onClose, onSubmit, onCreateAccount }) {
 
           {step === 2 ? (
             <>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}>
-                {[...BILLING_DAYS, OTHER_DAY].map((day) => (
-                  <OptionButton
-                    key={day}
-                    label={day === OTHER_DAY ? "Diğer" : String(day)}
-                    selected={billingChoice === day}
-                    onPress={() => setBillingChoice((current) => (current === day ? null : day))}
-                    style={{
-                      // 4 sütun: aradaki 3 boşluk düşülerek eşit paylaşılır.
-                      width: "22.5%",
-                      flexGrow: 1,
-                      paddingHorizontal: 0,
-                      alignItems: "center",
-                    }}
-                  />
-                ))}
-              </View>
-              {billingChoice === OTHER_DAY ? (
-                <TextInput
-                  style={{
-                    height: 52,
-                    backgroundColor: colors.field,
-                    borderRadius: 18,
-                    paddingHorizontal: 16,
-                    fontSize: 16,
-                    fontWeight: "700",
-                    color: colors.text,
-                  }}
-                  placeholder="Ayın kaçı? (1-31)"
-                  placeholderTextColor={colors.text2}
-                  keyboardType="number-pad"
-                  autoFocus
-                  value={otherDay}
-                  onChangeText={(text) => setOtherDay(text.replace(/[^0-9]/g, "").slice(0, 2))}
-                />
-              ) : null}
+              <BillingDayPicker
+                yearly={yearly}
+                day={billing.day}
+                month={billing.month}
+                onChange={setBilling}
+              />
               <Text style={{ color: colors.text2, fontSize: 13.5, marginTop: spacing.xs }}>
                 Ödeme günü yaklaşınca ana sayfada hatırlatırım.
               </Text>
@@ -392,8 +355,8 @@ function SheetContent({ plan, isGuest, onClose, onSubmit, onCreateAccount }) {
 }
 
 // Plan seçildikten sonra açılan, Kıvırık'ın adım adım sorduğu ekleme sayfası.
-// onSubmit({ reason, usage_frequency, billing_date }) ile biter; misafirde
-// cevaplar saklanmaz, çağıran taraf yalnızca planı yerel listeye ekler.
+// onSubmit({ reason, usage_frequency, billing_date, billing_month }) ile
+// biter; misafirde yalnızca ödeme günü yerel listede saklanır.
 export function AddSubscriptionSheet({ plan, isGuest, onClose, onSubmit, onCreateAccount }) {
   return (
     <Modal visible={plan !== null} transparent animationType="slide" onRequestClose={onClose}>

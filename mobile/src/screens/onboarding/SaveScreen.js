@@ -43,11 +43,17 @@ export default function SaveScreen({ navigation }) {
   const awaitingAuthRef = useRef(false);
 
   const catalogIds = chosenPlans.map((plan) => plan.catalog_id);
+  // Ödeme günü (girildiyse) hem hesaba hem misafir listesine gider.
+  const entries = chosenPlans.map((plan) => ({
+    catalog_id: plan.catalog_id,
+    billing_date: plan.billing_date,
+    billing_month: plan.billing_month,
+  }));
 
   async function saveToAccount(activeToken) {
     setSaving(true);
     try {
-      const result = await api.bulkAddUserSubscriptions(activeToken, catalogIds);
+      const result = await api.bulkAddUserSubscriptions(activeToken, entries);
       await refreshPlan(activeToken);
       // Limite takılan seçimler eklenmedi; Paywall Ana sayfanın üstünde açılır
       // ve kapatıldığında kullanıcı Ana sayfada kalır.
@@ -82,7 +88,7 @@ export default function SaveScreen({ navigation }) {
     setSaving(true);
     // Misafir listesi en fazla GUEST_LIMIT kayıt alır; seçim sırasına göre
     // ilk 5'i eklenir.
-    const { rejected } = await addGuestSubscriptions(catalogIds).catch(() => ({ rejected: [] }));
+    const { rejected } = await addGuestSubscriptions(entries).catch(() => ({ rejected: [] }));
 
     if (rejected.length > 0) {
       Alert.alert(

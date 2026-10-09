@@ -1,5 +1,12 @@
 // Onboarding adımları (iç stack'teki ekran adları), sırasıyla.
-export const ONBOARDING_STEPS = ["Welcome", "SelectServices", "ConfirmPlans", "Summary", "Save"];
+export const ONBOARDING_STEPS = [
+  "Welcome",
+  "SelectServices",
+  "ConfirmPlans",
+  "BillingDays",
+  "Summary",
+  "Save",
+];
 
 // Kök stack'teki "Onboarding" rotasını, taslaktaki adımdan devam edecek
 // şekilde kurar. Önceki adımlar da stack'e konur ki geri gitmek çalışsın.
