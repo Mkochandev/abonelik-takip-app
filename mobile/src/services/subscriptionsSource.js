@@ -21,7 +21,19 @@ export async function loadGuestSubscriptions() {
     }));
 }
 
+// Uygulamanın yönettiği kayıt (erişte Premium) ve Premium aktif değil mi?
+export function isManagedInactive(sub) {
+  return Boolean(sub.managed_by) && !sub.managed_active;
+}
+
 // Oturum varsa hesaptaki, yoksa bu cihazdaki abonelikler (katalog bilgisiyle).
+// Premium'u bitmiş erişte kaydı için hatırlatma planlanmaz.
 export async function loadSubscriptions(token) {
-  return token ? (await api.getUserSubscriptions(token)).subscriptions : loadGuestSubscriptions();
+  if (!token) {
+    return loadGuestSubscriptions();
+  }
+  const { subscriptions } = await api.getUserSubscriptions(token);
+  return subscriptions.map((sub) =>
+    isManagedInactive(sub) ? { ...sub, reminders_disabled: true } : sub
+  );
 }

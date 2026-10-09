@@ -17,6 +17,7 @@ import {
   ServiceLogo,
 } from "../components";
 import { useAuth } from "../context/AuthContext";
+import { subscribeEristeChanges } from "../services/eristeSync";
 import { maybeAskForReminders, rescheduleAll } from "../services/reminders";
 import { loadSubscriptions } from "../services/subscriptionsSource";
 import { GUEST_LIMIT, updateGuestSubscription } from "../storage/guestSubscriptions";
@@ -41,7 +42,7 @@ function chunkPairs(items) {
 // ve ay sonu durumu utils/billing'de).
 function getUpcomingPayments(subscriptions) {
   return subscriptions
-    .filter(hasBillingDay)
+    .filter((sub) => hasBillingDay(sub) && !sub.reminders_disabled)
     .map((sub) => ({ ...sub, ...getNextBillingInfo(sub) }))
     .sort((a, b) => a.daysLeft - b.daysLeft);
 }
@@ -79,6 +80,8 @@ export default function HomeScreen({ navigation }) {
   const [bubbleOpen, setBubbleOpen] = useState(true);
   // Eksik ödeme günü akışında sorulacak abonelikler (null: kapalı).
   const [billingFlowItems, setBillingFlowItems] = useState(null);
+  // erişte Premium kaydı arka planda eklendiğinde listeyi yeniden yükletir.
+  const [reloadKey, setReloadKey] = useState(0);
   const scrollRef = useRef(null);
   const subsSectionY = useRef(0);
 
@@ -89,6 +92,8 @@ export default function HomeScreen({ navigation }) {
       navigation.navigate("Paywall");
     }
   }, [pendingPaywall]);
+
+  useEffect(() => subscribeEristeChanges(() => setReloadKey((key) => key + 1)), []);
 
   useFocusEffect(
     useCallback(() => {
@@ -128,17 +133,25 @@ export default function HomeScreen({ navigation }) {
       return () => {
         isActive = false;
       };
-    }, [token])
+    }, [token, reloadKey])
   );
 
   // Yıllık planlar aylık toplama 12'de biri olarak girer.
-  const totalTry = subscriptions.reduce((sum, sub) => sum + monthlyPriceTry(sub), 0);
+  // Premium'u bitmiş erişte kaydı (reminders_disabled) ödenmediği için
+  // toplamlara girmez.
+  const paidSubscriptions = subscriptions.filter((sub) => !sub.reminders_disabled);
+  const totalTry = paidSubscriptions.reduce((sum, sub) => sum + monthlyPriceTry(sub), 0);
   const hasUsd = subscriptions.some((sub) => sub.currency === "USD");
+  // erişte Premium kaydı ücretsiz plan limitine sayılmaz.
+  const limitedCount = subscriptions.filter((sub) => !sub.managed_by).length;
 
   const upcomingPayments = getUpcomingPayments(subscriptions).slice(0, 3);
-  const missingBilling = loading || error ? [] : subscriptions.filter((sub) => !hasBillingDay(sub));
+  const missingBilling =
+    loading || error
+      ? []
+      : subscriptions.filter((sub) => !hasBillingDay(sub) && !sub.reminders_disabled);
 
-  const categoryTotals = subscriptions.reduce((totals, sub) => {
+  const categoryTotals = paidSubscriptions.reduce((totals, sub) => {
     const key = sub.category || "Diğer";
     totals[key] = (totals[key] || 0) + monthlyPriceTry(sub);
     return totals;
@@ -296,7 +309,7 @@ export default function HomeScreen({ navigation }) {
           }}
         >
           <Text style={{ color: colors.text2, fontSize: 13 }}>
-            {subscriptions.length} / {GUEST_LIMIT} abonelik
+            {limitedCount} / {GUEST_LIMIT} abonelik
           </Text>
           <Text style={{ color: colors.text, fontWeight: "700", fontSize: 13 }}>Sınırsız ol</Text>
         </Pressable>
@@ -311,7 +324,7 @@ export default function HomeScreen({ navigation }) {
           }}
         >
           <Text style={{ color: colors.text2, fontSize: 13 }}>
-            {subscriptions.length} / {limit} abonelik
+            {limitedCount} / {limit} abonelik
           </Text>
           <Text style={{ color: colors.text, fontWeight: "700", fontSize: 13 }}>Sınırsız ol</Text>
         </Pressable>

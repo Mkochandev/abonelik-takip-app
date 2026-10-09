@@ -9,6 +9,12 @@ import { AppTile } from "./AppTile";
 // servislerin logosu görünür, diğerleri baş harf karosunda kalır.
 const LOGODEV_KEY = process.env.EXPO_PUBLIC_LOGODEV_KEY;
 
+// Uygulamayla gelen logolar: erişte'nin kendi ikonu (gece varyantı) ağa ve
+// Logo.dev'e gitmeden gösterilir.
+const LOCAL_LOGOS = {
+  "eriste.app": require("../../assets/eriste-logo.png"),
+};
+
 function getLogoUri(domain, logoUrl, isDark) {
   if (logoUrl) {
     return logoUrl;
@@ -31,9 +37,10 @@ export function ServiceLogo({ domain, logoUrl, name = "", category, size = 44 })
   // Yüklenemeyen adres tutulur; kaynak değişirse yeni adres yeniden denenir.
   const [failedUri, setFailedUri] = useState(null);
 
-  const uri = getLogoUri(domain, logoUrl, isDark);
+  const localLogo = LOCAL_LOGOS[domain];
+  const uri = localLogo ? null : getLogoUri(domain, logoUrl, isDark);
 
-  if (!uri || failedUri === uri) {
+  if (!localLogo && (!uri || failedUri === uri)) {
     return <AppTile name={name} color={categories[category]} size={size} />;
   }
 
@@ -48,9 +55,9 @@ export function ServiceLogo({ domain, logoUrl, name = "", category, size = 44 })
       }}
     >
       <Image
-        source={{ uri }}
+        source={localLogo ?? { uri }}
         style={{ width: size, height: size }}
-        contentFit="contain"
+        contentFit={localLogo ? "cover" : "contain"}
         cachePolicy="disk"
         onError={() => setFailedUri(uri)}
       />

@@ -6,6 +6,7 @@ const { getUsdToTryRate } = require("../services/exchangeRate");
 const {
   FREE_LIMIT,
   UUID_REGEX,
+  getEffectivePlan,
   getSubscriptionCount,
   lockUserAndGetPlan,
   withTransaction,
@@ -97,7 +98,7 @@ router.post("/", async (req, res) => {
         `insert into user_subscriptions
            (user_id, catalog_id, reason, usage_frequency, billing_date, billing_month,
             price_alert_enabled)
-         select $1, sc.id, $3, $4, $5, $6, coalesce($7, true)
+         select $1::uuid, sc.id, $3::text, $4::text, $5::int, $6::int, coalesce($7::boolean, true)
          from subscriptions_catalog sc
          where sc.id = $2 and sc.managed_by is null
          returning ${RETURNING_COLUMNS}`,
@@ -186,18 +187,24 @@ router.post("/bulk", async (req, res) => {
       const { plan } = await lockUserAndGetPlan(client, req.user.id);
 
       const { rows: ownedRows } = await client.query(
-        "select catalog_id from user_subscriptions where user_id = $1",
+        `select us.catalog_id, sc.managed_by
+         from user_subscriptions us
+         join subscriptions_catalog sc on sc.id = us.catalog_id
+         where us.user_id = $1`,
         [req.user.id]
       );
       const owned = new Set(ownedRows.map((row) => row.catalog_id));
 
+      // Uygulamanın yönettiği kayıtlar (erişte Premium) elle eklenemez;
+      // katalogda yokmuş gibi atlanır.
       const { rows: catalogRows } = await client.query(
-        "select id from subscriptions_catalog where id = any($1::uuid[])",
+        "select id from subscriptions_catalog where id = any($1::uuid[]) and managed_by is null",
         [Array.from(new Set(catalogIds))]
       );
       const existsInCatalog = new Set(catalogRows.map((row) => row.id));
 
-      let count = owned.size;
+      // Yönetilen kayıtlar limite sayılmaz.
+      let count = ownedRows.filter((row) => !row.managed_by).length;
       const toInsert = [];
       const toFillBilling = [];
       const skippedItems = [];
@@ -289,9 +296,111 @@ router.get("/", async (req, res) => {
 
     const usdToTryRate = await getUsdToTryRate();
 
-    const subscriptions = rows.map((row) => withPriceTry(row, usdToTryRate));
+    // erişte Premium kaydı, Premium bitince silinmez; managed_active ile
+    // istemci "Premium aktif değil" gösterir ve hatırlatma planlamaz.
+    const hasManaged = rows.some((row) => row.managed_by);
+    const premiumActive = hasManaged && (await getEffectivePlan(req.user.id)).plan === "premium";
+
+    const subscriptions = rows.map((row) => ({
+      ...withPriceTry(row, usdToTryRate),
+      ...(row.managed_by ? { managed_active: premiumActive } : {}),
+    }));
 
     res.json({ subscriptions });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/user/subscriptions/eriste-premium — erişte Premium'u kullanıcının
+// takip listesine ekler ya da günceller (satın alma sonrası ve her açılışta,
+// istemci RevenueCat customerInfo'ya bakarak çağırır).
+// Gövde: { billing_cycle: "monthly" | "yearly", price, currency,
+//          billing_date, billing_month? } — fiyat App Store'un kullanıcıya
+// gösterdiği fiyattır, ödeme günü yenileme tarihinden türetilir.
+// Yanıt: { status: "added" | "updated" | "dismissed" | "inactive" }
+//   dismissed: kullanıcı erişte'yi listesinden silmiş, tekrar eklenmez.
+//   inactive: sunucuya göre Premium aktif değil (webhook/sync gecikmesi);
+//             istemci sonraki açılışta tekrar dener.
+router.post("/eriste-premium", async (req, res) => {
+  const { billing_cycle, currency } = req.body;
+  const price = Number(req.body.price);
+  const billing = parseBillingFields(req.body);
+
+  if (billing_cycle !== "monthly" && billing_cycle !== "yearly") {
+    return res.status(400).json({ error: "billing_cycle monthly ya da yearly olmalı" });
+  }
+
+  if (!Number.isFinite(price) || price < 0) {
+    return res.status(400).json({ error: "Geçersiz price" });
+  }
+
+  if (typeof currency !== "string" || !ISO_CURRENCY_REGEX.test(currency)) {
+    return res.status(400).json({ error: "Geçersiz currency" });
+  }
+
+  if (billing.error) {
+    return res.status(400).json({ error: billing.error });
+  }
+
+  // Aylık planda ay tutulmaz; yıllıkta ay da gerekir.
+  const billingMonth = billing_cycle === "yearly" ? billing.billing_month : null;
+  const billingDate = billing_cycle === "yearly" && !billingMonth ? null : billing.billing_date;
+
+  try {
+    const status = await withTransaction(async (client) => {
+      const { plan } = await lockUserAndGetPlan(client, req.user.id);
+
+      if (plan !== "premium") {
+        return "inactive";
+      }
+
+      const { rows: userRows } = await client.query(
+        "select eriste_dismissed from users where id = $1",
+        [req.user.id]
+      );
+
+      if (userRows[0]?.eriste_dismissed) {
+        return "dismissed";
+      }
+
+      const { rows: catalogRows } = await client.query(
+        "select id from subscriptions_catalog where managed_by = $1 and billing_cycle = $2 limit 1",
+        [ERISTE_MANAGED_BY, billing_cycle]
+      );
+
+      if (catalogRows.length === 0) {
+        throw new Error("erişte katalog kaydı bulunamadı (migration 0011)");
+      }
+
+      const catalogId = catalogRows[0].id;
+
+      // Plan değişimi (aylık ↔ yıllık) aynı satırı başka katalog kaydına
+      // taşır; yenilemede kayan ödeme günü de burada düzelir.
+      const { rowCount } = await client.query(
+        `update user_subscriptions us
+         set catalog_id = $2, custom_price = $3, custom_currency = $4,
+             billing_date = $5, billing_month = $6
+         from subscriptions_catalog sc
+         where us.user_id = $1 and sc.id = us.catalog_id and sc.managed_by = $7`,
+        [req.user.id, catalogId, price, currency, billingDate, billingMonth, ERISTE_MANAGED_BY]
+      );
+
+      if (rowCount > 0) {
+        return "updated";
+      }
+
+      await client.query(
+        `insert into user_subscriptions
+           (user_id, catalog_id, custom_price, custom_currency, billing_date, billing_month)
+         values ($1, $2, $3, $4, $5, $6)`,
+        [req.user.id, catalogId, price, currency, billingDate, billingMonth]
+      );
+
+      return "added";
+    });
+
+    res.json({ status });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -348,13 +457,27 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-// DELETE /api/user/subscriptions/:id — kullanıcının bir aboneliğini kaldır
+// DELETE /api/user/subscriptions/:id — kullanıcının bir aboneliğini kaldır.
+// erişte Premium kaydı silinirse bu tercih saklanır ve kayıt tekrar eklenmez.
 router.delete("/:id", async (req, res) => {
   try {
-    const { rows } = await db.query(
-      "delete from user_subscriptions where id = $1 and user_id = $2 returning id",
-      [req.params.id, req.user.id]
-    );
+    const rows = await withTransaction(async (client) => {
+      const { rows: deleted } = await client.query(
+        `delete from user_subscriptions us
+         using subscriptions_catalog sc
+         where us.id = $1 and us.user_id = $2 and sc.id = us.catalog_id
+         returning us.id, sc.managed_by`,
+        [req.params.id, req.user.id]
+      );
+
+      if (deleted[0]?.managed_by === ERISTE_MANAGED_BY) {
+        await client.query("update users set eriste_dismissed = true where id = $1", [
+          req.user.id,
+        ]);
+      }
+
+      return deleted;
+    });
 
     if (rows.length === 0) {
       return res.status(404).json({ error: "Kayıt bulunamadı" });

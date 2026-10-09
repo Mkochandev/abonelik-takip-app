@@ -6,6 +6,7 @@ import Purchases from "react-native-purchases";
 import * as api from "../api/client";
 import { BrandLogo, Card, PillButton } from "../components";
 import { useAuth } from "../context/AuthContext";
+import { syncEristePremium } from "../services/eristeSync";
 import { fontFamily, useTheme } from "../theme";
 
 const TERMS_URL = "https://abonelik-api.gaziustam.com/terms.html";
@@ -89,8 +90,9 @@ export default function PaywallScreen({ navigation }) {
     setPurchasing(true);
     setError(null);
 
+    let customerInfo = null;
     try {
-      await Purchases.purchasePackage(selectedPackage);
+      ({ customerInfo } = await Purchases.purchasePackage(selectedPackage));
     } catch (err) {
       if (!err.userCancelled) {
         setError(err.message || "Satın alma tamamlanamadı");
@@ -108,6 +110,8 @@ export default function PaywallScreen({ navigation }) {
       if (data?.plan !== "premium") {
         throw new Error("Plan henüz güncellenmedi");
       }
+      // erişte Premium takip listesine eklenir (beklemeden).
+      syncEristePremium(token, customerInfo);
       navigation.goBack();
     } catch (err) {
       Alert.alert("Teşekkürler", "Satın alman alındı, birkaç dakika içinde aktif olacak.");
@@ -124,6 +128,7 @@ export default function PaywallScreen({ navigation }) {
       await api.syncPlan(token).catch(() => {});
       const data = await refreshPlan();
       if (data?.plan === "premium") {
+        syncEristePremium(token);
         return;
       }
     }
@@ -136,6 +141,7 @@ export default function PaywallScreen({ navigation }) {
       await Purchases.restorePurchases();
       await api.syncPlan(token);
       await refreshPlan();
+      syncEristePremium(token);
       Alert.alert("Tamamlandı", "Satın alman geri yüklendi.");
     } catch (err) {
       setError(err.message || "Geri yükleme başarısız");

@@ -93,12 +93,13 @@ function splashSvg({ size }) {
   </svg>`;
 }
 
-function render(svg, fileName) {
+function render(svg, fileName, dir = ASSETS_DIR) {
   const resvg = new Resvg(svg, {
     background: "rgba(0,0,0,0)",
     font: { fontFiles: [FONT_FILE], loadSystemFonts: false, defaultFontFamily: FONT_FAMILY },
   });
-  const outPath = path.join(ASSETS_DIR, fileName);
+  fs.mkdirSync(dir, { recursive: true });
+  const outPath = path.join(dir, fileName);
   fs.writeFileSync(outPath, resvg.render().asPng());
   console.log("yazıldı:", path.relative(ROOT, outPath));
 }
@@ -108,5 +109,12 @@ render(logoSvg({ size: 1024 }), "icon.png");
 render(logoSvg({ size: 1024, contentScale: ADAPTIVE_CONTENT_SCALE }), "adaptive-icon.png");
 render(splashSvg({ size: 1024 }), "splash-icon.png");
 render(logoSvg({ size: 64, radius: 114 }), "favicon.png");
+
+// erişte Premium'un takip listesindeki logosu (gece varyantı, köşesiz; köşeyi
+// ServiceLogo kırpar). Uygulama yerel kopyayı, katalog kaydının logo_url'i
+// backend'deki kopyayı kullanır.
+const serviceLogo = logoSvg({ size: 256 });
+render(serviceLogo, "eriste-logo.png");
+render(serviceLogo, "eriste-gece.png", path.join(ROOT, "..", "backend", "public", "brand"));
 
 console.log("Tamamlandı.");

@@ -7,14 +7,14 @@ import Purchases from "react-native-purchases";
 // çökmez.
 const IOS_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY;
 
-function isSupported() {
+export function isPurchasesSupported() {
   return Platform.OS === "ios" && !!IOS_API_KEY;
 }
 
 let configured = false;
 
 export function configurePurchases() {
-  if (!isSupported() || configured) {
+  if (!isPurchasesSupported() || configured) {
     return;
   }
   Purchases.configure({ apiKey: IOS_API_KEY });
@@ -22,7 +22,7 @@ export function configurePurchases() {
 }
 
 export async function identifyPurchasesUser(userId) {
-  if (!isSupported()) {
+  if (!isPurchasesSupported()) {
     return;
   }
   configurePurchases();
@@ -34,7 +34,7 @@ export async function identifyPurchasesUser(userId) {
 }
 
 export async function signOutPurchasesUser() {
-  if (!isSupported() || !configured) {
+  if (!isPurchasesSupported() || !configured) {
     return;
   }
   try {

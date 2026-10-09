@@ -198,3 +198,10 @@ export function removeUserSubscription(token, id) {
 export function syncPlan(token) {
   return request("/user/plan/sync", { method: "POST", token });
 }
+
+// erişte Premium'u takip listesine ekler/günceller.
+// body: { billing_cycle, price, currency, billing_date, billing_month }
+// Yanıt: { status: "added" | "updated" | "dismissed" | "inactive" }
+export function syncEristePremium(token, body) {
+  return request("/user/subscriptions/eriste-premium", { method: "POST", token, body });
+}

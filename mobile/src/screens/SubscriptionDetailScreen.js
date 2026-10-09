@@ -15,10 +15,13 @@ import {
 } from "../components";
 import { useAuth } from "../context/AuthContext";
 import { maybeAskForReminders, rescheduleAll } from "../services/reminders";
+import { isManagedInactive } from "../services/subscriptionsSource";
 import { removeGuestSubscription, updateGuestSubscription } from "../storage/guestSubscriptions";
 import { fontFamily, useTheme } from "../theme";
 import { formatBillingDay, periodLabel } from "../utils/billing";
 import { formatAmount, formatSubscriptionPrice } from "../utils/price";
+
+const APP_STORE_SUBSCRIPTIONS_URL = "https://apps.apple.com/account/subscriptions";
 
 export default function SubscriptionDetailScreen({ navigation, route }) {
   const { subscription: initialSubscription } = route.params;
@@ -36,6 +39,14 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [removing, setRemoving] = useState(false);
+
+  // erişte Premium: fiyat App Store'dan gelir, iptal App Store'da yapılır,
+  // Premium bitince kayıt kalır ama "aktif değil" görünür.
+  const isManaged = Boolean(subscription.managed_by);
+  const managedInactive = isManagedInactive(subscription);
+  const cancelUrl = isManaged
+    ? catalogItem?.cancel_url ?? APP_STORE_SUBSCRIPTIONS_URL
+    : catalogItem?.cancel_url;
 
   useEffect(() => {
     let isActive = true;
@@ -67,8 +78,8 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
   }, [subscription.catalog_id]);
 
   function handleCancel() {
-    if (catalogItem?.cancel_url) {
-      Linking.openURL(catalogItem.cancel_url);
+    if (cancelUrl) {
+      Linking.openURL(cancelUrl);
     }
   }
 
@@ -102,7 +113,9 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
   function handleRemovePress() {
     Alert.alert(
       "Aboneliği kaldır",
-      `${subscription.app_name} takip listenden kaldırılsın mı? Bu işlem servisteki aboneliğini iptal etmez.`,
+      isManaged
+        ? `${subscription.app_name} takip listenden kaldırılsın mı? Premium aboneliğin iptal olmaz ve bu kayıt listene tekrar eklenmez.`
+        : `${subscription.app_name} takip listenden kaldırılsın mı? Bu işlem servisteki aboneliğini iptal etmez.`,
       [
         { text: "Vazgeç", style: "cancel" },
         { text: "Kaldır", style: "destructive", onPress: removeSubscription },
@@ -175,6 +188,22 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
         {price.secondary ? (
           <Text style={{ color: colors.text2, marginTop: 2 }}>{price.secondary}</Text>
         ) : null}
+        {managedInactive ? (
+          <View
+            style={{
+              alignSelf: "flex-start",
+              backgroundColor: colors.field,
+              borderRadius: 999,
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              marginTop: spacing.sm,
+            }}
+          >
+            <Text style={{ fontSize: 12.5, fontWeight: "700", color: colors.text2 }}>
+              Premium aktif değil
+            </Text>
+          </View>
+        ) : null}
       </Card>
 
       <GroupedList style={{ marginBottom: spacing.sm }}>
@@ -230,47 +259,56 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
         </GroupedList>
       )}
 
-      <Card style={{ marginBottom: spacing.lg }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md }}>
-          <KivirikHead size={44} mood="dusunceli" />
-          <Text style={{ fontFamily: fontFamily.bold, fontSize: 16, color: colors.text }}>
-            Fiyat geçmişi
-          </Text>
-        </View>
-
-        {loading ? (
-          <ActivityIndicator color={colors.primary} />
-        ) : error ? (
-          <Text style={{ color: colors.danger }}>{error}</Text>
-        ) : priceHistory.length === 0 ? (
-          <Text style={{ color: colors.text2 }}>
-            Kıvırık bu fiyatı takip ediyor. Henüz değişiklik yok; zam gelirse eski fiyatlar burada
-            tarihleriyle görünür.
-          </Text>
-        ) : (
-          <View style={{ gap: spacing.sm }}>
-            {priceHistory.map((entry) => (
-              <View
-                key={entry.id}
-                style={{ flexDirection: "row", justifyContent: "space-between" }}
-              >
-                <Text style={{ color: colors.text2 }}>
-                  {new Date(entry.changed_at).toLocaleDateString("tr-TR")}
-                </Text>
-                <Text style={{ color: colors.text, fontWeight: "600" }}>
-                  {formatAmount(entry.price, catalogItem?.currency ?? subscription.currency)}
-                </Text>
-              </View>
-            ))}
+      {/* erişte Premium'un fiyatı App Store'dan gelir; katalog fiyat geçmişi yok. */}
+      {!isManaged ? (
+        <Card style={{ marginBottom: spacing.lg }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md }}>
+            <KivirikHead size={44} mood="dusunceli" />
+            <Text style={{ fontFamily: fontFamily.bold, fontSize: 16, color: colors.text }}>
+              Fiyat geçmişi
+            </Text>
           </View>
-        )}
-      </Card>
 
-      {catalogItem?.cancel_url ? (
+          {loading ? (
+            <ActivityIndicator color={colors.primary} />
+          ) : error ? (
+            <Text style={{ color: colors.danger }}>{error}</Text>
+          ) : priceHistory.length === 0 ? (
+            <Text style={{ color: colors.text2 }}>
+              Kıvırık bu fiyatı takip ediyor. Henüz değişiklik yok; zam gelirse eski fiyatlar burada
+              tarihleriyle görünür.
+            </Text>
+          ) : (
+            <View style={{ gap: spacing.sm }}>
+              {priceHistory.map((entry) => (
+                <View
+                  key={entry.id}
+                  style={{ flexDirection: "row", justifyContent: "space-between" }}
+                >
+                  <Text style={{ color: colors.text2 }}>
+                    {new Date(entry.changed_at).toLocaleDateString("tr-TR")}
+                  </Text>
+                  <Text style={{ color: colors.text, fontWeight: "600" }}>
+                    {formatAmount(entry.price, catalogItem?.currency ?? subscription.currency)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </Card>
+      ) : null}
+
+      {cancelUrl && !managedInactive ? (
         <View>
-          <PillButton title="Aboneliği iptal et" variant="danger" onPress={handleCancel} />
+          <PillButton
+            title={isManaged ? "İptal et" : "Aboneliği iptal et"}
+            variant="danger"
+            onPress={handleCancel}
+          />
           <Text style={{ color: colors.text2, fontSize: 12, textAlign: "center", marginTop: spacing.sm }}>
-            {subscription.app_name} — iptal sayfası tarayıcıda açılır
+            {isManaged
+              ? "App Store abonelik yönetimi açılır"
+              : `${subscription.app_name} — iptal sayfası tarayıcıda açılır`}
           </Text>
         </View>
       ) : null}

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import * as api from "../api/client";
+import { syncEristePremium } from "../services/eristeSync";
 import { syncGuestSubscriptions } from "../services/guestSync";
 import { identifyPurchasesUser, signOutPurchasesUser } from "../services/purchases";
 import { clearGuestSubscriptions } from "../storage/guestSubscriptions";
@@ -58,6 +59,8 @@ export function AuthProvider({ children }) {
     await identifyPurchasesUser(data.user.id);
     const me = await refreshPlan(data.session?.access_token);
     const guestSync = await mergeGuestSubscriptions(data.session?.access_token);
+    // Premium aktifse erişte de takip listesine eklensin (arka planda).
+    syncEristePremium(data.session?.access_token);
     return { plan: me?.plan ?? "free", guestSync };
   }
 
@@ -136,6 +139,10 @@ export function AuthProvider({ children }) {
         if (guestSync?.limit_reached && data.plan !== "premium") {
           setPendingPaywall(true);
         }
+
+        // Her açılışta: Premium aktifse erişte kaydı eklenir/güncellenir
+        // (plan değişimi, yenilemede kayan ödeme günü).
+        syncEristePremium(tokenRef.current);
       } catch (err) {
         await clearSession();
       } finally {
