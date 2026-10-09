@@ -36,6 +36,13 @@ export default {
     plugins: [
       "expo-font",
       "expo-image",
+      [
+        "expo-notifications",
+        {
+          // Yalnızca yerel (cihazda planlanan) ödeme hatırlatmaları.
+          color: "#FFC53D",
+        },
+      ],
       "expo-secure-store",
       [
         "expo-splash-screen",

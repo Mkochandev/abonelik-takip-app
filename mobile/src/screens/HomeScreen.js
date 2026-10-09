@@ -17,35 +17,14 @@ import {
   ServiceLogo,
 } from "../components";
 import { useAuth } from "../context/AuthContext";
-import {
-  GUEST_LIMIT,
-  getGuestSubscriptions,
-  updateGuestSubscription,
-} from "../storage/guestSubscriptions";
+import { maybeAskForReminders, rescheduleAll } from "../services/reminders";
+import { loadSubscriptions } from "../services/subscriptionsSource";
+import { GUEST_LIMIT, updateGuestSubscription } from "../storage/guestSubscriptions";
 import { dismissGuestBanner, shouldShowGuestBanner } from "../storage/onboarding";
 import { fontFamily, useTheme } from "../theme";
 import { getNextBillingInfo, hasBillingDay, isYearly } from "../utils/billing";
-import { indexCatalogPlans, monthlyPriceTry } from "../utils/catalog";
+import { monthlyPriceTry } from "../utils/catalog";
 import { formatSubscriptionPrice, formatTRY } from "../utils/price";
-
-// Misafir listesi yalnızca catalog_id tutar; ad, fiyat, logo ve kategori
-// her seferinde güncel katalogdan eklenir. Katalogdan kaldırılmış kayıtlar
-// gösterilmez.
-async function loadGuestSubscriptions() {
-  const [items, data] = await Promise.all([getGuestSubscriptions(), api.getCatalog()]);
-  const plans = indexCatalogPlans(data.catalog);
-
-  return items
-    .filter((item) => plans.has(item.catalog_id))
-    .map((item) => ({
-      ...plans.get(item.catalog_id),
-      id: item.catalog_id,
-      added_at: item.added_at,
-      billing_date: item.billing_date ?? null,
-      billing_month: item.billing_month ?? null,
-      isGuest: true,
-    }));
-}
 
 const SECTION_GAP = 26;
 
@@ -123,11 +102,15 @@ export default function HomeScreen({ navigation }) {
         setLoading(true);
         setError(null);
         try {
-          const next = token
-            ? (await api.getUserSubscriptions(token)).subscriptions
-            : await loadGuestSubscriptions();
+          const next = await loadSubscriptions(token);
           if (isActive) {
             setSubscriptions(next);
+          }
+          // Ekleme/silme/gün/fiyat değişiklikleri hatırlatmalara yansısın;
+          // gün girilmiş ama Kıvırık henüz sormadıysa (ör. onboarding) sorar.
+          rescheduleAll(next);
+          if (next.some(hasBillingDay)) {
+            maybeAskForReminders();
           }
         } catch (err) {
           if (isActive) {
@@ -541,7 +524,13 @@ export default function HomeScreen({ navigation }) {
       <BillingDaySheet
         items={billingFlowItems}
         onSave={saveBillingDay}
-        onClose={() => setBillingFlowItems(null)}
+        onClose={() => {
+          setBillingFlowItems(null);
+          rescheduleAll(subscriptions);
+          if (subscriptions.some(hasBillingDay)) {
+            maybeAskForReminders();
+          }
+        }}
       />
     </ScrollView>
   );

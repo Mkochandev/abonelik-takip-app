@@ -9,8 +9,10 @@ import {
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { ReminderPromptHost } from './src/components';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import MainTabs from './src/navigation/MainTabs';
 import GuestLimitScreen from './src/screens/GuestLimitScreen';
@@ -21,10 +23,35 @@ import SubscriptionDetailScreen from './src/screens/SubscriptionDetailScreen';
 import OnboardingNavigator from './src/screens/onboarding/OnboardingNavigator';
 import { buildOnboardingRoute } from './src/screens/onboarding/steps';
 import { configurePurchases } from './src/services/purchases';
+import { configureNotifications, rescheduleAll, setReminderToken } from './src/services/reminders';
 import { isOnboardingDone, loadOnboardingDraft, setOnboardingDone } from './src/storage/onboarding';
 import { useTheme } from './src/theme';
 
 configurePurchases();
+configureNotifications();
+
+// Ödeme hatırlatmalarını açılışta, oturum değiştiğinde ve uygulama ön plana
+// her geldiğinde baştan planlar (fiyat/gün değişiklikleri böylece yansır).
+function useReminderSync() {
+  const { authReady, token } = useAuth();
+
+  useEffect(() => {
+    if (!authReady) {
+      return;
+    }
+    setReminderToken(token);
+    rescheduleAll();
+  }, [authReady, token]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        rescheduleAll();
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+}
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -75,6 +102,7 @@ function ThemedNavigationContainer() {
   const { colors, isDark } = useTheme();
   const { authReady, isAuthenticated, subscriptionCount } = useAuth();
   const onboardingBoot = useOnboardingBoot();
+  useReminderSync();
   const initialStateRef = useRef(undefined);
   const ready = authReady && onboardingBoot !== null;
 
@@ -117,6 +145,7 @@ function ThemedNavigationContainer() {
   return (
     <NavigationContainer theme={navigationTheme} initialState={initialStateRef.current ?? undefined}>
       <RootNavigator />
+      <ReminderPromptHost />
       <StatusBar style={isDark ? 'light' : 'dark'} />
     </NavigationContainer>
   );

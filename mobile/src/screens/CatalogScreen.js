@@ -16,6 +16,7 @@ import * as api from "../api/client";
 import { AddSubscriptionSheet, Card, Chip, SearchField, ServiceLogo, useToast } from "../components";
 import { CATEGORIES } from "../config/categories";
 import { useAuth } from "../context/AuthContext";
+import { maybeAskForReminders, rescheduleAll } from "../services/reminders";
 import {
   GUEST_LIMIT,
   addGuestSubscription,
@@ -155,6 +156,7 @@ export default function CatalogScreen({ navigation }) {
         delete next[plan.id];
         return next;
       });
+      rescheduleAll();
     } catch (err) {
       Alert.alert("Hata", err.message);
     } finally {
@@ -169,6 +171,7 @@ export default function CatalogScreen({ navigation }) {
     try {
       const created = await api.addUserSubscription(token, plan.id, details);
       setSelections((current) => ({ ...current, [plan.id]: created.id }));
+      afterPlanAdded(details);
     } catch (err) {
       if (err.code === "LIMIT_REACHED") {
         setPendingPaywallPlan(plan);
@@ -178,6 +181,15 @@ export default function CatalogScreen({ navigation }) {
       }
     } finally {
       setPendingPlanId(null);
+    }
+  }
+
+  // Yeni abonelik hatırlatmalara eklensin; gün girildiyse ve Kıvırık henüz
+  // sormadıysa "haber vereyim mi?" sorusu gelir.
+  function afterPlanAdded(details) {
+    rescheduleAll();
+    if (details?.billing_date) {
+      maybeAskForReminders();
     }
   }
 
@@ -200,6 +212,7 @@ export default function CatalogScreen({ navigation }) {
         return;
       }
       setSelections((current) => ({ ...current, [plan.id]: plan.id }));
+      afterPlanAdded(details);
       showToast(`${plan.app_name} eklendi`);
     } catch (err) {
       Alert.alert("Hata", err.message);

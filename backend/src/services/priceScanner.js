@@ -150,7 +150,7 @@ async function scanSinglePrice(catalogItem) {
 // her kayıttan sonra (tamamlanan, toplam) ile çağrılır.
 async function scanAllPrices({ onProgress } = {}) {
   const { rows } = await db.query(
-    "select * from subscriptions_catalog where source_url is not null order by app_name, plan_name"
+    "select * from subscriptions_catalog where source_url is not null and managed_by is null order by app_name, plan_name"
   );
 
   const details = [];

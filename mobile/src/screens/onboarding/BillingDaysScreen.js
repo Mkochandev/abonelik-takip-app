@@ -6,6 +6,7 @@ import { useTheme } from "../../theme";
 import { MONTH_NAMES, isYearly } from "../../utils/billing";
 import { CatalogStatus, KivirikPrompt, OnboardingLayout } from "./OnboardingLayout";
 import { useOnboarding } from "./OnboardingContext";
+import { maybeAskForReminders } from "../../services/reminders";
 
 function isComplete(value, yearly) {
   return Boolean(value?.day) && (!yearly || Boolean(value?.month));
@@ -50,6 +51,8 @@ export default function BillingDaysScreen({ navigation }) {
   function handleChange(plan, value) {
     setBillingDay(plan.app_name, value);
     if (isComplete(value, isYearly(plan))) {
+      // İlk girilen günde Kıvırık hatırlatma iznini sorar (bir kez).
+      maybeAskForReminders();
       openNextAfter(plan.app_name);
     }
   }

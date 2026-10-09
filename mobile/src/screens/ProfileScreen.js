@@ -1,13 +1,120 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Alert, Linking, Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Card, GroupedList, GroupedListRow, PillButton } from "../components";
+import { Card, Chip, GroupedList, GroupedListRow, PillButton, Toggle } from "../components";
 import { useAuth } from "../context/AuthContext";
+import {
+  rescheduleAll,
+  requestNotificationPermission,
+  scheduleTestReminder,
+} from "../services/reminders";
 import { clearGuestSubscriptions } from "../storage/guestSubscriptions";
 import { resetOnboarding } from "../storage/onboarding";
+import {
+  DAYS_BEFORE_OPTIONS,
+  getReminderSettings,
+  updateReminderSettings,
+} from "../storage/reminderSettings";
 import { fontFamily, useTheme } from "../theme";
 import { buildOnboardingRoute } from "./onboarding/steps";
+
+const DAYS_BEFORE_LABELS = { 0: "Aynı gün", 1: "1 gün önce", 3: "3 gün önce" };
+
+function showPermissionDeniedAlert() {
+  Alert.alert(
+    "Bildirim izni kapalı",
+    "Hatırlatmaları açmak için ayarlardan bildirimlere izin ver.",
+    [
+      { text: "Vazgeç", style: "cancel" },
+      { text: "Ayarlar", onPress: () => Linking.openSettings() },
+    ]
+  );
+}
+
+// Ödeme hatırlatmaları: aç/kapa ve kaç gün önce. Misafirde de çalışır.
+function ReminderSettingsSection() {
+  const { colors, spacing } = useTheme();
+  const [settings, setSettings] = useState(null);
+
+  // Kıvırık'ın sorusu başka bir ekranda cevaplanmış olabilir; her odakta oku.
+  useFocusEffect(
+    useCallback(() => {
+      getReminderSettings().then(setSettings);
+    }, [])
+  );
+
+  async function apply(updates) {
+    setSettings(await updateReminderSettings(updates));
+    rescheduleAll();
+  }
+
+  async function handleToggle(value) {
+    if (value && !(await requestNotificationPermission())) {
+      showPermissionDeniedAlert();
+      return;
+    }
+    // Elle açıp kapatan kullanıcıya Kıvırık ayrıca sormaz.
+    await apply({ enabled: value, prompted: true });
+  }
+
+  if (!settings) {
+    return null;
+  }
+
+  return (
+    <GroupedList style={{ marginBottom: spacing.lg }}>
+      <GroupedListRow style={{ justifyContent: "space-between" }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontWeight: "600" }}>Ödeme hatırlatmaları</Text>
+          <Text style={{ color: colors.text2, fontSize: 13, marginTop: 2 }}>
+            Ödeme gününden önce, saat 10:00 civarı
+          </Text>
+        </View>
+        <Toggle value={settings.enabled} onValueChange={handleToggle} />
+      </GroupedListRow>
+      {settings.enabled ? (
+        <GroupedListRow style={{ flexWrap: "wrap" }}>
+          {DAYS_BEFORE_OPTIONS.map((days) => (
+            <Chip
+              key={days}
+              label={DAYS_BEFORE_LABELS[days]}
+              selected={settings.daysBefore === days}
+              onPress={() => apply({ daysBefore: days })}
+            />
+          ))}
+        </GroupedListRow>
+      ) : null}
+    </GroupedList>
+  );
+}
+
+// Yalnızca __DEV__: 1 dakika sonrasına örnek hatırlatma planlar.
+function DevTestNotificationButton() {
+  const { spacing } = useTheme();
+
+  if (!__DEV__) {
+    return null;
+  }
+
+  async function handlePress() {
+    if (await scheduleTestReminder()) {
+      Alert.alert("Planlandı", "Bildirim 1 dakika sonra gelecek. Uygulamayı arka plana alabilirsin.");
+    } else {
+      showPermissionDeniedAlert();
+    }
+  }
+
+  return (
+    <PillButton
+      title="Test bildirimi: 1 dk sonra (dev)"
+      variant="outline"
+      onPress={handlePress}
+      style={{ marginTop: spacing.sm }}
+    />
+  );
+}
 
 const PRIVACY_URL = "https://abonelik-api.gaziustam.com/privacy.html";
 const TERMS_URL = "https://abonelik-api.gaziustam.com/terms.html";
@@ -75,7 +182,10 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </Card>
 
-        <GroupedList style={{ marginTop: spacing.lg }}>
+        <View style={{ height: spacing.lg }} />
+        <ReminderSettingsSection />
+
+        <GroupedList>
           <GroupedListRow
             onPress={() => Linking.openURL(TERMS_URL)}
             style={{ justifyContent: "space-between" }}
@@ -93,6 +203,7 @@ export default function ProfileScreen({ navigation }) {
         </GroupedList>
 
         <DevResetOnboardingButton navigation={navigation} />
+        <DevTestNotificationButton />
       </ScrollView>
     );
   }
@@ -121,6 +232,8 @@ export default function ProfileScreen({ navigation }) {
       <Text style={[typography.screenTitle, { color: colors.text, marginBottom: spacing.lg }]}>
         Profil
       </Text>
+
+      <ReminderSettingsSection />
 
       <GroupedList style={{ marginBottom: spacing.lg }}>
         <GroupedListRow style={{ justifyContent: "space-between" }}>
@@ -173,6 +286,7 @@ export default function ProfileScreen({ navigation }) {
       <PillButton title="Hesabımı sil" variant="danger" onPress={() => setConfirmVisible(true)} />
 
       <DevResetOnboardingButton navigation={navigation} />
+      <DevTestNotificationButton />
 
       <Modal
         visible={confirmVisible}

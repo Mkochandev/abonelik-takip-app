@@ -14,6 +14,7 @@ import {
   ServiceLogo,
 } from "../components";
 import { useAuth } from "../context/AuthContext";
+import { maybeAskForReminders, rescheduleAll } from "../services/reminders";
 import { removeGuestSubscription, updateGuestSubscription } from "../storage/guestSubscriptions";
 import { fontFamily, useTheme } from "../theme";
 import { formatBillingDay, periodLabel } from "../utils/billing";
@@ -305,7 +306,13 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
       <BillingDaySheet
         items={billingSheetOpen ? [subscription] : null}
         onSave={saveBillingDay}
-        onClose={() => setBillingSheetOpen(false)}
+        onClose={() => {
+          setBillingSheetOpen(false);
+          rescheduleAll();
+          if (subscription.billing_date) {
+            maybeAskForReminders();
+          }
+        }}
       />
     </ScrollView>
   );

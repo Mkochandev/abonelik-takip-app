@@ -17,10 +17,17 @@ const router = express.Router();
 // için fazlasıyla yeterli; kötüye kullanımı sınırlar).
 const MAX_BULK_ITEMS = 50;
 
+// Kullanıcıya özel fiyat (custom_price, ör. erişte Premium'da App Store
+// fiyatı) doluysa katalog fiyatının yerine geçer.
 const SUBSCRIPTION_WITH_CATALOG_COLUMNS = `us.id, us.started_at, us.reason, us.usage_frequency,
   us.price_alert_enabled, us.billing_date, us.billing_month, sc.id as catalog_id, sc.app_name,
-  sc.plan_name, sc.current_price, sc.currency, sc.billing_cycle, sc.category, sc.domain,
-  sc.logo_url`;
+  sc.plan_name, coalesce(us.custom_price, sc.current_price) as current_price,
+  coalesce(us.custom_currency, sc.currency) as currency, sc.billing_cycle, sc.category,
+  sc.domain, sc.logo_url, sc.managed_by`;
+
+// erişte Premium kaydının katalogdaki yönetici değeri.
+const ERISTE_MANAGED_BY = "revenuecat";
+const ISO_CURRENCY_REGEX = /^[A-Z]{3}$/;
 
 const RETURNING_COLUMNS =
   "id, catalog_id, started_at, reason, usage_frequency, billing_date, billing_month, price_alert_enabled";
@@ -81,15 +88,18 @@ router.post("/", async (req, res) => {
       if (plan === "free") {
         const count = await getSubscriptionCount(req.user.id, client);
         if (count >= FREE_LIMIT) {
-          return null;
+          return { limitReached: true };
         }
       }
 
+      // Uygulamanın yönettiği kayıtlar (erişte Premium) elle eklenemez.
       const { rows } = await client.query(
         `insert into user_subscriptions
            (user_id, catalog_id, reason, usage_frequency, billing_date, billing_month,
             price_alert_enabled)
-         values ($1, $2, $3, $4, $5, $6, coalesce($7, true))
+         select $1, sc.id, $3, $4, $5, $6, coalesce($7, true)
+         from subscriptions_catalog sc
+         where sc.id = $2 and sc.managed_by is null
          returning ${RETURNING_COLUMNS}`,
         [
           req.user.id,
@@ -102,14 +112,18 @@ router.post("/", async (req, res) => {
         ]
       );
 
-      return rows[0];
+      return { row: rows[0] };
     });
 
-    if (!created) {
+    if (created.limitReached) {
       return res.status(403).json({ code: "LIMIT_REACHED", limit: FREE_LIMIT });
     }
 
-    res.status(201).json(created);
+    if (!created.row) {
+      return res.status(400).json({ error: "Geçersiz catalog_id" });
+    }
+
+    res.status(201).json(created.row);
   } catch (error) {
     if (error.code === "23505") {
       return res.status(409).json({ error: "Bu abonelik zaten seçili" });

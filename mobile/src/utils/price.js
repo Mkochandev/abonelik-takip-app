@@ -12,6 +12,11 @@ export function formatTRY(amount) {
   return `${amountFormatter.format(Number(amount))} ₺`;
 }
 
+// Bildirim metinleri için: "229,99 TL" (₺ simgesi bildirimlerde düz metin).
+export function formatTRYText(amount) {
+  return `${amountFormatter.format(Number(amount))} TL`;
+}
+
 export function formatUSD(amount) {
   return `$${amountFormatter.format(Number(amount))}`;
 }

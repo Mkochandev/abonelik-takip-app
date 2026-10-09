@@ -130,9 +130,13 @@ async function syncPlanFromRevenueCat(userId) {
 }
 
 // client verilirse (transaction içi) sayım o bağlantı üzerinden yapılır.
+// Uygulamanın yönettiği kayıtlar (erişte Premium) limite sayılmaz.
 async function getSubscriptionCount(userId, client = db) {
   const { rows } = await client.query(
-    "select count(*)::int as count from user_subscriptions where user_id = $1",
+    `select count(*)::int as count
+     from user_subscriptions us
+     join subscriptions_catalog sc on sc.id = us.catalog_id
+     where us.user_id = $1 and sc.managed_by is null`,
     [userId]
   );
 

@@ -46,7 +46,8 @@ function groupByAppName(rows, usdToTryRate) {
 
 // GET /api/catalog — tüm katalog, app_name'e göre gruplanmış
 // ?category=... verilirse yalnızca o kategorideki kayıtlar döner.
-// current_price < 0 olan kayıtlar herkese açık listelerde gösterilmez;
+// current_price < 0 olan kayıtlar ve uygulamanın yönettiği kayıtlar
+// (managed_by, ör. erişte Premium) herkese açık listelerde gösterilmez;
 // admin endpoint'leri bunları görmeye devam eder.
 router.get("/", async (req, res) => {
   const { category } = req.query;
@@ -54,11 +55,11 @@ router.get("/", async (req, res) => {
   try {
     const { rows } = category
       ? await db.query(
-          "select * from subscriptions_catalog where category = $1 and current_price >= 0 order by app_name, plan_name",
+          "select * from subscriptions_catalog where category = $1 and current_price >= 0 and managed_by is null order by app_name, plan_name",
           [category]
         )
       : await db.query(
-          "select * from subscriptions_catalog where current_price >= 0 order by app_name, plan_name"
+          "select * from subscriptions_catalog where current_price >= 0 and managed_by is null order by app_name, plan_name"
         );
 
     const usdToTryRate = await getUsdToTryRate();
@@ -82,7 +83,7 @@ router.get("/search", async (req, res) => {
   try {
     const params = [`%${q}%`];
     let sql =
-      "select * from subscriptions_catalog where app_name ilike $1 and current_price >= 0";
+      "select * from subscriptions_catalog where app_name ilike $1 and current_price >= 0 and managed_by is null";
 
     if (category) {
       params.push(category);
