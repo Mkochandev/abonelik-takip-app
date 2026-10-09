@@ -62,5 +62,8 @@ export const categoryColors = {
   "Yapay Zeka": "#C6EEDF",
   "Bulut Depolama": "#CFE5FB",
   "Üretkenlik/Tasarım": "#FBE7A8",
+  Oyun: "#DCEFB0",
+  "Alışveriş/Üyelik": "#E8DCC8",
+  "VPN/Güvenlik": "#D5DCE8",
   Spor: "#FFD0CC",
 };

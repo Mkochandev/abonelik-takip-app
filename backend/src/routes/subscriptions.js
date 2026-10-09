@@ -94,14 +94,15 @@ router.post("/", async (req, res) => {
         }
       }
 
-      // Uygulamanın yönettiği kayıtlar (erişte Premium) elle eklenemez.
+      // Uygulamanın yönettiği (erişte Premium) ve yayında olmayan kayıtlar
+      // elle eklenemez.
       const { rows } = await client.query(
         `insert into user_subscriptions
            (user_id, catalog_id, reason, usage_frequency, billing_date, billing_month,
             price_alert_enabled)
          select $1::uuid, sc.id, $3::text, $4::text, $5::int, $6::int, coalesce($7::boolean, true)
          from subscriptions_catalog sc
-         where sc.id = $2 and sc.managed_by is null
+         where sc.id = $2 and sc.managed_by is null and sc.status = 'active'
          returning ${RETURNING_COLUMNS}`,
         [
           req.user.id,
@@ -196,10 +197,11 @@ router.post("/bulk", async (req, res) => {
       );
       const owned = new Set(ownedRows.map((row) => row.catalog_id));
 
-      // Uygulamanın yönettiği kayıtlar (erişte Premium) elle eklenemez;
-      // katalogda yokmuş gibi atlanır.
+      // Uygulamanın yönettiği (erişte Premium) ve yayında olmayan (taslak,
+      // gizli) kayıtlar elle eklenemez; katalogda yokmuş gibi atlanır.
       const { rows: catalogRows } = await client.query(
-        "select id from subscriptions_catalog where id = any($1::uuid[]) and managed_by is null",
+        `select id from subscriptions_catalog
+         where id = any($1::uuid[]) and managed_by is null and status = 'active'`,
         [Array.from(new Set(catalogIds))]
       );
       const existsInCatalog = new Set(catalogRows.map((row) => row.id));

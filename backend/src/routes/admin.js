@@ -19,7 +19,9 @@ let scanState = {
   error: null,
 };
 
-const DOMAIN_REGEX = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const DOMAIN_REGEX =/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
 
 // "https://www.Netflix.com/tr/" -> "netflix.com". Boş değer null olur;
 // geçersiz değerde { error } döner.
@@ -135,6 +137,66 @@ router.get("/", async (req, res) => {
   }
 });
 
+function parseIds(body) {
+  const ids = body?.ids;
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > 500) {
+    return { error: "ids 1-500 elemanlı bir dizi olmalı" };
+  }
+  if (ids.some((id) => typeof id !== "string" || !UUID_REGEX.test(id))) {
+    return { error: "Geçersiz id formatı" };
+  }
+  return { value: ids };
+}
+
+// POST /api/admin/catalog/approve — { ids } taslak/gizli kayıtları yayına
+// alır ve fiyatı doğrulanmış sayar. Fiyatı olmayanlar yayına alınamaz;
+// yanıtta skipped olarak döner.
+router.post("/approve", async (req, res) => {
+  const ids = parseIds(req.body);
+  if (ids.error) {
+    return res.status(400).json({ error: ids.error });
+  }
+
+  try {
+    const { rows } = await db.query(
+      `update subscriptions_catalog
+       set status = 'active', price_status = 'verified'
+       where id = any($1::uuid[]) and current_price is not null and current_price >= 0
+         and managed_by is null
+       returning id`,
+      [ids.value]
+    );
+    const approved = new Set(rows.map((row) => row.id));
+    res.json({
+      approved: Array.from(approved),
+      skipped: ids.value.filter((id) => !approved.has(id.toLowerCase())),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/admin/catalog/hide — { ids } kayıtları gizler (mobilde görünmez,
+// silinmez; ekleyen kullanıcıların kaydı durur).
+router.post("/hide", async (req, res) => {
+  const ids = parseIds(req.body);
+  if (ids.error) {
+    return res.status(400).json({ error: ids.error });
+  }
+
+  try {
+    const { rows } = await db.query(
+      `update subscriptions_catalog set status = 'hidden'
+       where id = any($1::uuid[]) and managed_by is null
+       returning id`,
+      [ids.value]
+    );
+    res.json({ hidden: rows.map((row) => row.id) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // POST /api/admin/catalog — yeni app/plan ekle
 router.post("/", async (req, res) => {
   const {
@@ -203,6 +265,7 @@ router.put("/:id", async (req, res) => {
     category,
     cancel_url,
     billing_cycle,
+    source_note,
   } = req.body;
 
   const params = [
@@ -215,6 +278,7 @@ router.put("/:id", async (req, res) => {
     category,
     cancel_url,
     billing_cycle,
+    source_note,
   ].map((value) => (value === undefined ? null : value));
 
   const hasDomain = req.body.domain !== undefined;
@@ -228,19 +292,22 @@ router.put("/:id", async (req, res) => {
 
   try {
     const { rows } = await db.query(
+      // Admin'in elle girdiği fiyat doğrulanmış sayılır.
       `update subscriptions_catalog
        set app_name = coalesce($1, app_name),
            plan_name = coalesce($2, plan_name),
-           current_price = coalesce($3, current_price),
+           current_price = coalesce($3::numeric, current_price),
+           price_status = case when $3::numeric is not null then 'verified' else price_status end,
            currency = coalesce($4, currency),
            source_url = coalesce($5, source_url),
            last_checked_at = coalesce($6, last_checked_at),
            category = coalesce($7, category),
            cancel_url = coalesce($8, cancel_url),
            billing_cycle = coalesce($9, billing_cycle),
-           domain = case when $10::boolean then $11 else domain end,
-           logo_url = case when $12::boolean then $13 else logo_url end
-       where id = $14
+           source_note = coalesce($10, source_note),
+           domain = case when $11::boolean then $12 else domain end,
+           logo_url = case when $13::boolean then $14 else logo_url end
+       where id = $15
        returning *`,
       [...params, hasDomain, domain.value, hasLogoUrl, logoUrl.value, req.params.id]
     );

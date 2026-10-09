@@ -1,0 +1,78 @@
+[
+  { "app_name": "HBO Max", "plan_name": "Özel", "category": "Video/Dizi-Film", "domain": "hbomax.com", "source_url": "https://www.hbomax.com/tr/tr", "cancel_url": null, "currency": "TRY", "billing_cycle": "monthly" },
+  { "app_name": "HBO Max", "plan_name": "Standart (Yıllık)", "category": "Video/Dizi-Film", "domain": "hbomax.com", "source_url": "https://www.hbomax.com/tr/tr", "cancel_url": null, "currency": "TRY", "billing_cycle": "yearly" },
+  { "app_name": "HBO Max", "plan_name": "Özel (Yıllık)", "category": "Video/Dizi-Film", "domain": "hbomax.com", "source_url": "https://www.hbomax.com/tr/tr", "cancel_url": null, "currency": "TRY", "billing_cycle": "yearly" },
+
+  { "app_name": "Gain", "plan_name": "Premium", "category": "Video/Dizi-Film", "domain": "gain.tv", "source_url": "https://www.gain.tv", "cancel_url": null, "currency": "TRY", "billing_cycle": "monthly" },
+
+  { "app_name": "TOD", "plan_name": "Eğlence", "category": "Video/Dizi-Film", "domain": "tod.tv", "source_url": "https://www.tod.tv", "cancel_url": null, "currency": "TRY", "billing_cycle": "monthly" },
+  { "app_name": "TOD", "plan_name": "Spor Extra", "category": "Spor", "domain": "tod.tv", "source_url": "https://www.tod.tv", "cancel_url": null, "currency": "TRY", "billing_cycle": "monthly" },
+  { "app_name": "TOD", "plan_name": "Süper Lig", "category": "Spor", "domain": "tod.tv", "source_url": "https://www.tod.tv", "cancel_url": null, "currency": "TRY", "billing_cycle": "monthly" },
+
+  { "app_name": "S Sport Plus", "plan_name": "Aylık", "category": "Spor", "domain": "ssportplus.com", "source_url": "https://www.ssportplus.com", "cancel_url": null, "currency": "TRY", "billing_cycle": "monthly" },
+  { "app_name": "S Sport Plus", "plan_name": "Yıllık", "category": "Spor", "domain": "ssportplus.com", "source_url": "https://www.ssportplus.com", "cancel_url": null, "currency": "TRY", "billing_cycle": "yearly" },
+
+  { "app_name": "MUBI", "plan_name": "Aylık", "category": "Video/Dizi-Film", "domain": "mubi.com", "source_url": "https://mubi.com/tr", "cancel_url": null, "currency": "TRY", "billing_cycle": "monthly" },
+  { "app_name": "MUBI", "plan_name": "Yıllık", "category": "Video/Dizi-Film", "domain": "mubi.com", "source_url": "https://mubi.com/tr", "cancel_url": null, "currency": "TRY", "billing_cycle": "yearly" },
+  { "app_name": "MUBI", "plan_name": "Öğrenci", "category": "Video/Dizi-Film", "domain": "mubi.com", "source_url": "https://mubi.com/tr", "cancel_url": null, "currency": "TRY", "billing_cycle": "monthly" },
+
+  { "app_name": "Apple Music", "plan_name": "Bireysel", "category": "Müzik", "domain": "apple.com", "source_url": "https://www.apple.com/tr/apple-music/", "cancel_url": "https://apps.apple.com/account/subscriptions", "currency": "TRY", "billing_cycle": "monthly" },
+  { "app_name": "Apple Music", "plan_name": "Aile", "category": "Müzik", "domain": "apple.com", "source_url": "https://www.apple.com/tr/apple-music/", "cancel_url": "https://apps.apple.com/account/subscriptions", "currency": "TRY", "billing_cycle": "monthly" },
+  { "app_name": "Apple Music", "plan_name": "Öğrenci", "category": "Müzik", "domain": "apple.com", "source_url": "https://www.apple.com/tr/apple-music/", "cancel_url": "https://apps.apple.com/account/subscriptions", "currency": "TRY", "billing_cycle": "monthly" },
+
+  { "app_name": "YouTube Premium", "plan_name": "Lite", "category": "Müzik", "domain": "youtube.com", "source_url": "https://www.youtube.com/premium", "cancel_url": "https://www.youtube.com/paid_memberships", "currency": "TRY", "billing_cycle": "monthly" },
+
+  { "app_name": "fizy", "plan_name": "Premium", "category": "Müzik", "domain": "fizy.com", "source_url": "https://www.turkcell.com.tr/servisler/fizy", "cancel_url": "https://www.turkcell.com.tr/servisler/fizy", "currency": "TRY", "billing_cycle": "monthly" },
+
+  { "app_name": "ChatGPT", "plan_name": "Go", "category": "Yapay Zeka", "domain": "chatgpt.com", "source_url": "https://openai.com/chatgpt/pricing/", "cancel_url": null, "currency": "USD", "billing_cycle": "monthly" },
+
+  { "app_name": "Claude", "plan_name": "Max 5x", "category": "Yapay Zeka", "domain": "claude.ai", "source_url": "https://claude.com/pricing", "cancel_url": null, "currency": "USD", "billing_cycle": "monthly" },
+  { "app_name": "Claude", "plan_name": "Max 20x", "category": "Yapay Zeka", "domain": "claude.ai", "source_url": "https://claude.com/pricing", "cancel_url": null, "currency": "USD", "billing_cycle": "monthly" },
+
+  { "app_name": "Google One", "plan_name": "Google AI Ultra (20TB)", "category": "Bulut Depolama", "domain": "one.google.com", "source_url": "https://one.google.com/about/plans", "cancel_url": "https://one.google.com/settings", "currency": "TRY", "billing_cycle": "monthly" },
+
+  { "app_name": "Perplexity", "plan_name": "Pro", "category": "Yapay Zeka", "domain": "perplexity.ai", "source_url": "https://www.perplexity.ai/pro", "cancel_url": null, "currency": "USD", "billing_cycle": "monthly" },
+  { "app_name": "Perplexity", "plan_name": "Max", "category": "Yapay Zeka", "domain": "perplexity.ai", "source_url": "https://www.perplexity.ai/pro", "cancel_url": null, "currency": "USD", "billing_cycle": "monthly" },
+
+  { "app_name": "Midjourney", "plan_name": "Basic", "category": "Yapay Zeka", "domain": "midjourney.com", "source_url": "https://docs.midjourney.com/docs/plans", "cancel_url": "https://www.midjourney.com/account", "currency": "USD", "billing_cycle": "monthly" },
+  { "app_name": "Midjourney", "plan_name": "Standard", "category": "Yapay Zeka", "domain": "midjourney.com", "source_url": "https://docs.midjourney.com/docs/plans", "cancel_url": "https://www.midjourney.com/account", "currency": "USD", "billing_cycle": "monthly" },
+  { "app_name": "Midjourney", "plan_name": "Pro", "category": "Yapay Zeka", "domain": "midjourney.com", "source_url": "https://docs.midjourney.com/docs/plans", "cancel_url": "https://www.midjourney.com/account", "currency": "USD", "billing_cycle": "monthly" },
+  { "app_name": "Midjourney", "plan_name": "Mega", "category": "Yapay Zeka", "domain": "midjourney.com", "source_url": "https://docs.midjourney.com/docs/plans", "cancel_url": "https://www.midjourney.com/account", "currency": "USD", "billing_cycle": "monthly" },
+
+  { "app_name": "GitHub Copilot", "plan_name": "Pro", "category": "Yapay Zeka", "domain": "github.com", "source_url": "https://github.com/features/copilot/plans", "cancel_url": "https://github.com/settings/billing", "currency": "USD", "billing_cycle": "monthly" },
+  { "app_name": "GitHub Copilot", "plan_name": "Pro+", "category": "Yapay Zeka", "domain": "github.com", "source_url": "https://github.com/features/copilot/plans", "cancel_url": "https://github.com/settings/billing", "currency": "USD", "billing_cycle": "monthly" },
+
+  { "app_name": "Cursor", "plan_name": "Pro", "category": "Yapay Zeka", "domain": "cursor.com", "source_url": "https://cursor.com/pricing", "cancel_url": "https://cursor.com/dashboard", "currency": "USD", "billing_cycle": "monthly" },
+  { "app_name": "Cursor", "plan_name": "Pro+", "category": "Yapay Zeka", "domain": "cursor.com", "source_url": "https://cursor.com/pricing", "cancel_url": "https://cursor.com/dashboard", "currency": "USD", "billing_cycle": "monthly" },
+  { "app_name": "Cursor", "plan_name": "Ultra", "category": "Yapay Zeka", "domain": "cursor.com", "source_url": "https://cursor.com/pricing", "cancel_url": "https://cursor.com/dashboard", "currency": "USD", "billing_cycle": "monthly" },
+
+  { "app_name": "iCloud+", "plan_name": "6TB", "category": "Bulut Depolama", "domain": "icloud.com", "source_url": "https://www.apple.com/tr/icloud/", "cancel_url": "https://apps.apple.com/account/subscriptions", "currency": "TRY", "billing_cycle": "monthly" },
+  { "app_name": "iCloud+", "plan_name": "12TB", "category": "Bulut Depolama", "domain": "icloud.com", "source_url": "https://www.apple.com/tr/icloud/", "cancel_url": "https://apps.apple.com/account/subscriptions", "currency": "TRY", "billing_cycle": "monthly" },
+
+  { "app_name": "Microsoft 365", "plan_name": "Basic", "category": "Bulut Depolama", "domain": "microsoft.com", "source_url": "https://www.microsoft.com/tr-tr/microsoft-365/buy/compare-all-microsoft-365-products", "cancel_url": "https://account.microsoft.com/services", "currency": "TRY", "billing_cycle": "monthly" },
+
+  { "app_name": "Notion", "plan_name": "Plus", "category": "Üretkenlik/Tasarım", "domain": "notion.com", "source_url": "https://www.notion.com/pricing", "cancel_url": null, "currency": "USD", "billing_cycle": "monthly" },
+  { "app_name": "Notion", "plan_name": "Business", "category": "Üretkenlik/Tasarım", "domain": "notion.com", "source_url": "https://www.notion.com/pricing", "cancel_url": null, "currency": "USD", "billing_cycle": "monthly" },
+
+  { "app_name": "Figma", "plan_name": "Professional", "category": "Üretkenlik/Tasarım", "domain": "figma.com", "source_url": "https://www.figma.com/pricing/", "cancel_url": null, "currency": "USD", "billing_cycle": "monthly" },
+
+  { "app_name": "Xbox Game Pass", "plan_name": "Essential", "category": "Oyun", "domain": "xbox.com", "source_url": "https://www.xbox.com/tr-TR/xbox-game-pass", "cancel_url": "https://account.microsoft.com/services", "currency": "TRY", "billing_cycle": "monthly" },
+  { "app_name": "Xbox Game Pass", "plan_name": "Premium", "category": "Oyun", "domain": "xbox.com", "source_url": "https://www.xbox.com/tr-TR/xbox-game-pass", "cancel_url": "https://account.microsoft.com/services", "currency": "TRY", "billing_cycle": "monthly" },
+  { "app_name": "Xbox Game Pass", "plan_name": "Ultimate", "category": "Oyun", "domain": "xbox.com", "source_url": "https://www.xbox.com/tr-TR/xbox-game-pass", "cancel_url": "https://account.microsoft.com/services", "currency": "TRY", "billing_cycle": "monthly" },
+  { "app_name": "Xbox Game Pass", "plan_name": "PC Game Pass", "category": "Oyun", "domain": "xbox.com", "source_url": "https://www.xbox.com/tr-TR/xbox-game-pass", "cancel_url": "https://account.microsoft.com/services", "currency": "TRY", "billing_cycle": "monthly" },
+
+  { "app_name": "PlayStation Plus", "plan_name": "Essential", "category": "Oyun", "domain": "playstation.com", "source_url": "https://www.playstation.com/tr-tr/ps-plus/", "cancel_url": null, "currency": "TRY", "billing_cycle": "monthly" },
+  { "app_name": "PlayStation Plus", "plan_name": "Extra", "category": "Oyun", "domain": "playstation.com", "source_url": "https://www.playstation.com/tr-tr/ps-plus/", "cancel_url": null, "currency": "TRY", "billing_cycle": "monthly" },
+  { "app_name": "PlayStation Plus", "plan_name": "Deluxe", "category": "Oyun", "domain": "playstation.com", "source_url": "https://www.playstation.com/tr-tr/ps-plus/", "cancel_url": null, "currency": "TRY", "billing_cycle": "monthly" },
+  { "app_name": "PlayStation Plus", "plan_name": "Essential (12 Aylık)", "category": "Oyun", "domain": "playstation.com", "source_url": "https://www.playstation.com/tr-tr/ps-plus/", "cancel_url": null, "currency": "TRY", "billing_cycle": "yearly" },
+  { "app_name": "PlayStation Plus", "plan_name": "Extra (12 Aylık)", "category": "Oyun", "domain": "playstation.com", "source_url": "https://www.playstation.com/tr-tr/ps-plus/", "cancel_url": null, "currency": "TRY", "billing_cycle": "yearly" },
+  { "app_name": "PlayStation Plus", "plan_name": "Deluxe (12 Aylık)", "category": "Oyun", "domain": "playstation.com", "source_url": "https://www.playstation.com/tr-tr/ps-plus/", "cancel_url": null, "currency": "TRY", "billing_cycle": "yearly" },
+
+  { "app_name": "EA Play", "plan_name": "Aylık", "category": "Oyun", "domain": "ea.com", "source_url": "https://www.ea.com/ea-play", "cancel_url": null, "currency": "USD", "billing_cycle": "monthly" },
+  { "app_name": "EA Play", "plan_name": "Yıllık", "category": "Oyun", "domain": "ea.com", "source_url": "https://www.ea.com/ea-play", "cancel_url": null, "currency": "USD", "billing_cycle": "yearly" },
+
+  { "app_name": "Hepsiburada Premium", "plan_name": "Aylık", "category": "Alışveriş/Üyelik", "domain": "hepsiburada.com", "source_url": "https://www.hepsiburada.com/premium", "cancel_url": null, "currency": "TRY", "billing_cycle": "monthly" },
+  { "app_name": "Hepsiburada Premium", "plan_name": "Yıllık", "category": "Alışveriş/Üyelik", "domain": "hepsiburada.com", "source_url": "https://www.hepsiburada.com/premium", "cancel_url": null, "currency": "TRY", "billing_cycle": "yearly" },
+
+  { "app_name": "Amazon Prime", "plan_name": "Aylık", "category": "Alışveriş/Üyelik", "domain": "amazon.com.tr", "source_url": "https://www.amazon.com.tr/prime", "cancel_url": "https://www.amazon.com.tr/mc", "currency": "TRY", "billing_cycle": "monthly" }
+]

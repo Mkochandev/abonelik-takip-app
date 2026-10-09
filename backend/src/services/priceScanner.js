@@ -145,12 +145,15 @@ async function scanSinglePrice(catalogItem) {
   }
 }
 
-// Katalogdaki source_url'i olan tüm kayıtları sırayla tarar, aralarına
+// Yayındaki (active) ve source_url'i olan tüm kayıtları (taslaklar
+// scripts/seed-catalog.mjs ile Batch API'den geçer) sırayla tarar, aralarına
 // rate limit'e takılmamak için 2 saniye bekleme koyar. onProgress verilirse
 // her kayıttan sonra (tamamlanan, toplam) ile çağrılır.
 async function scanAllPrices({ onProgress } = {}) {
   const { rows } = await db.query(
-    "select * from subscriptions_catalog where source_url is not null and managed_by is null order by app_name, plan_name"
+    `select * from subscriptions_catalog
+     where source_url is not null and managed_by is null and status = 'active'
+     order by app_name, plan_name`
   );
 
   const details = [];
@@ -176,4 +179,4 @@ async function scanAllPrices({ onProgress } = {}) {
   return summary;
 }
 
-module.exports = { scanSinglePrice, scanAllPrices };
+module.exports = { htmlToPlainText, scanSinglePrice, scanAllPrices };

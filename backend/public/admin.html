@@ -343,6 +343,63 @@
   tr.editing td {
     border-bottom: none;
   }
+
+  .tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .tabs button {
+    background: var(--card);
+    color: var(--text);
+  }
+
+  .tabs button.active {
+    background: var(--primary);
+    color: var(--on-primary);
+  }
+
+  .badge {
+    display: inline-block;
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    background: var(--field);
+    color: var(--text2);
+    margin-left: 4px;
+    vertical-align: middle;
+  }
+
+  .badge.warn {
+    background: #FFE9C2;
+    color: #7A4B00;
+  }
+
+  .badge[hidden] {
+    display: none;
+  }
+
+  .drafts-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .draft-note {
+    color: var(--text2);
+    font-size: 12px;
+    max-width: 260px;
+  }
+
+  .draft-edit {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 8px;
+  }
 </style>
 </head>
 <body>
@@ -369,6 +426,46 @@
   </div>
 
   <div id="mainSection">
+    <div class="tabs">
+      <button type="button" class="active" data-tab="catalogTab">Katalog</button>
+      <button type="button" data-tab="draftsTab">Taslaklar <span id="draftCount" class="badge"></span></button>
+    </div>
+
+    <div id="draftsTab" hidden>
+      <div class="card">
+        <h2>Taslaklar</h2>
+        <p class="draft-note" style="max-width: none">
+          Toplu eklenen ve onay bekleyen kayıtlar. Fiyatlar tarayıcının bulduğu değerdir; kaynak
+          sayfadan kontrol edip onayla. Fiyatı olmayan kayıt onaylanamaz.
+        </p>
+        <div class="drafts-toolbar">
+          <label><input id="draftSelectAll" type="checkbox" /> Tümünü seç</label>
+          <button id="approveSelectedButton" type="button" disabled>Seçilenleri onayla</button>
+          <button id="hideSelectedButton" type="button" class="secondary" disabled>Seçilenleri gizle</button>
+          <label class="catalog-filter" style="margin: 0">
+            <input id="draftPricedFilter" type="checkbox" />
+            Sadece fiyatı bulunanlar
+          </label>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th></th>
+              <th>Uygulama</th>
+              <th>Plan</th>
+              <th>Bulunan fiyat</th>
+              <th>Kaynak</th>
+              <th>Kategori</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="draftsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="catalogTab">
     <div id="scanSection" class="card">
       <button id="scanButton">Fiyatları Tara</button>
       <span id="scanStatus"></span>
@@ -425,6 +522,7 @@
         <tbody id="catalogBody"></tbody>
       </table>
     </div>
+    </div>
   </div>
 
   <div id="status"></div>
@@ -439,6 +537,9 @@
       "Yapay Zeka",
       "Bulut Depolama",
       "Üretkenlik/Tasarım",
+      "Oyun",
+      "Alışveriş/Üyelik",
+      "VPN/Güvenlik",
       "Spor",
     ];
     // Mobil uygulamadaki kategori pastelleri (baş harf karosu zemini).
@@ -449,6 +550,9 @@
       "Yapay Zeka": "#C6EEDF",
       "Bulut Depolama": "#CFE5FB",
       "Üretkenlik/Tasarım": "#FBE7A8",
+      "Oyun": "#DCEFB0",
+      "Alışveriş/Üyelik": "#E8DCC8",
+      "VPN/Güvenlik": "#D5DCE8",
       "Spor": "#FFD0CC",
     };
     const LOGO_PREVIEW_DEBOUNCE_MS = 400;
@@ -527,6 +631,7 @@
         const data = await apiRequest("", { method: "GET" });
         catalogCache = data.catalog;
         renderTable();
+        renderDrafts();
         setStatus("");
       } catch (err) {
         setStatus(err.message, "error");
@@ -644,10 +749,12 @@
     function renderTable() {
       catalogBody.innerHTML = "";
 
-      const missingCount = catalogCache.filter(isMissingLogo).length;
+      // Taslaklar ayrı sekmede; burada yayındaki ve gizlenen kayıtlar.
+      const publishedItems = catalogCache.filter((item) => item.status !== "draft");
+      const missingCount = publishedItems.filter(isMissingLogo).length;
       document.getElementById("missingLogoCount").textContent = `(${missingCount} eksik)`;
 
-      const visibleItems = onlyMissingLogo ? catalogCache.filter(isMissingLogo) : catalogCache;
+      const visibleItems = onlyMissingLogo ? publishedItems.filter(isMissingLogo) : publishedItems;
 
       if (visibleItems.length === 0) {
         catalogBody.innerHTML = `<tr><td colspan="9">${
@@ -665,13 +772,16 @@
                <option value="monthly"${item.billing_cycle === "yearly" ? "" : " selected"}>Aylık</option>
                <option value="yearly"${item.billing_cycle === "yearly" ? " selected" : ""}>Yıllık</option>
              </select>`
-          : escapeHtml(item.current_price);
+          : escapeHtml(item.current_price ?? "—");
         const cycleLabel = item.billing_cycle === "yearly" ? " / yıl" : "";
 
         const actionsCell = isEditing
           ? `<button data-action="save" data-id="${item.id}">Kaydet</button>
              <button class="secondary" data-action="cancel">İptal</button>`
           : `<button data-action="edit" data-id="${item.id}">Düzenle</button>
+             ${item.managed_by ? "" : item.status === "hidden"
+               ? `<button class="secondary" data-action="publish" data-id="${item.id}">Yayınla</button>`
+               : `<button class="secondary" data-action="hide" data-id="${item.id}">Gizle</button>`}
              <button class="danger" data-action="delete" data-id="${item.id}">Sil</button>`;
 
         const categoryCell = isEditing
@@ -692,7 +802,7 @@
         row.className = isEditing ? "editing" : "";
         row.innerHTML = `
           <td>${logoTileHtml(item)}</td>
-          <td>${escapeHtml(item.app_name)}${domainHint}</td>
+          <td>${escapeHtml(item.app_name)}${statusBadgesHtml(item)}${domainHint}</td>
           <td>${escapeHtml(item.plan_name || "")}</td>
           <td>${priceCell} ${!isEditing ? escapeHtml(item.currency) + cycleLabel : ""}</td>
           <td>${escapeHtml(item.currency)}</td>
@@ -730,6 +840,249 @@
       renderLogoPreview("edit");
     }
 
+    // Durum rozetleri: gizli kayıt, uygulamanın yönettiği kayıt ve logosu
+    // olmayan kayıt (alan adı/logo yoksa baştan; görsel yüklenemezse
+    // markLogoFailed ile görünür olur).
+    function statusBadgesHtml(item) {
+      const hidden = item.status === "hidden" ? `<span class="badge">gizli</span>` : "";
+      const managed = item.managed_by ? `<span class="badge">uygulama yönetir</span>` : "";
+      const logo = `<span class="badge warn logo-missing-badge"${isMissingLogo(item) ? "" : " hidden"}>logo yok</span>`;
+      return hidden + managed + logo;
+    }
+
+    function markLogoFailed(image) {
+      const row = image.closest("tr");
+      image.remove();
+      const badge = row && row.querySelector(".logo-missing-badge");
+      if (badge) badge.hidden = false;
+    }
+
+    async function setCatalogStatus(endpoint, ids) {
+      if (ids.length === 0) return;
+      try {
+        const result = await apiRequest(`/${endpoint}`, {
+          method: "POST",
+          body: JSON.stringify({ ids }),
+        });
+        if (endpoint === "approve") {
+          const skipped = result.skipped.length;
+          setStatus(
+            `${result.approved.length} kayıt yayına alındı.` +
+              (skipped ? ` ${skipped} kayıt fiyatı olmadığı için atlandı.` : ""),
+            skipped ? "error" : "ok"
+          );
+        } else {
+          setStatus(`${result.hidden.length} kayıt gizlendi.`, "ok");
+        }
+        selectedDraftIds.clear();
+        await loadCatalog();
+      } catch (err) {
+        setStatus(err.message, "error");
+      }
+    }
+
+    // --- Taslaklar -------------------------------------------------------
+
+    const draftsBody = document.getElementById("draftsBody");
+    const draftSelectAll = document.getElementById("draftSelectAll");
+    const approveSelectedButton = document.getElementById("approveSelectedButton");
+    const hideSelectedButton = document.getElementById("hideSelectedButton");
+    const selectedDraftIds = new Set();
+    let draftEditingId = null;
+    let onlyPricedDrafts = false;
+
+    function draftItems() {
+      const drafts = catalogCache.filter((item) => item.status === "draft");
+      return onlyPricedDrafts ? drafts.filter((item) => item.current_price != null) : drafts;
+    }
+
+    function selectedVisibleDraftIds() {
+      return draftItems()
+        .filter((item) => selectedDraftIds.has(item.id))
+        .map((item) => item.id);
+    }
+
+    function updateDraftToolbar() {
+      const visible = draftItems();
+      const selectedCount = selectedVisibleDraftIds().length;
+      draftSelectAll.checked = visible.length > 0 && selectedCount === visible.length;
+      approveSelectedButton.disabled = selectedCount === 0;
+      hideSelectedButton.disabled = selectedCount === 0;
+      approveSelectedButton.textContent = selectedCount
+        ? `Seçilenleri onayla (${selectedCount})`
+        : "Seçilenleri onayla";
+    }
+
+    function draftPriceHtml(item) {
+      if (item.current_price == null) {
+        return `<span class="badge warn">bulunamadı</span>`;
+      }
+      const cycle = item.billing_cycle === "yearly" ? " / yıl" : " / ay";
+      const unverified =
+        item.price_status === "unverified" ? `<span class="badge">doğrulanmadı</span>` : "";
+      return `${escapeHtml(item.current_price)} ${escapeHtml(item.currency)}${cycle}${unverified}`;
+    }
+
+    function renderDrafts() {
+      const allDrafts = catalogCache.filter((item) => item.status === "draft");
+      document.getElementById("draftCount").textContent = allDrafts.length || "";
+      draftsBody.innerHTML = "";
+
+      const items = draftItems();
+      if (items.length === 0) {
+        draftsBody.innerHTML = `<tr><td colspan="8">Onay bekleyen taslak yok.</td></tr>`;
+      }
+
+      for (const item of items) {
+        const row = document.createElement("tr");
+        const isEditing = draftEditingId === item.id;
+        const source = item.source_url
+          ? `<a href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener">kaynak ↗</a>`
+          : "—";
+        const note = item.source_note
+          ? `<div class="draft-note">${escapeHtml(item.source_note)}</div>`
+          : "";
+
+        row.className = isEditing ? "editing" : "";
+        row.innerHTML = `
+          <td><input type="checkbox" data-select="${item.id}" ${selectedDraftIds.has(item.id) ? "checked" : ""} /></td>
+          <td>${logoTileHtml(item)}</td>
+          <td>${escapeHtml(item.app_name)}${statusBadgesHtml(item)}
+            <div class="domain-hint">${escapeHtml(item.domain || "alan adı yok")}</div></td>
+          <td>${escapeHtml(item.plan_name || "")}</td>
+          <td>${draftPriceHtml(item)}${note}</td>
+          <td>${source}</td>
+          <td>${escapeHtml(item.category || "—")}</td>
+          <td class="actions">
+            <button data-draft-action="approve" data-id="${item.id}" ${item.current_price == null ? "disabled" : ""}>Onayla</button>
+            <button data-draft-action="edit" data-id="${item.id}">Düzenle</button>
+            <button class="secondary" data-draft-action="hide" data-id="${item.id}">Gizle</button>
+          </td>
+        `;
+        draftsBody.appendChild(row);
+
+        if (isEditing) {
+          const editRow = document.createElement("tr");
+          editRow.className = "edit-logo-row";
+          editRow.innerHTML = `
+            <td></td>
+            <td colspan="7">
+              <div class="draft-edit">
+                <input id="draftEditPlan" placeholder="plan_name" value="${escapeHtml(item.plan_name || "")}" />
+                <input id="draftEditPrice" type="number" step="0.01" placeholder="Fiyat" value="${escapeHtml(item.current_price ?? "")}" />
+                <input id="draftEditCurrency" placeholder="TRY / USD" value="${escapeHtml(item.currency || "")}" />
+                <select id="draftEditCycle">
+                  <option value="monthly"${item.billing_cycle === "yearly" ? "" : " selected"}>Aylık</option>
+                  <option value="yearly"${item.billing_cycle === "yearly" ? " selected" : ""}>Yıllık</option>
+                </select>
+                <select id="draftEditCategory">${categoryOptionsHtml(item.category)}</select>
+                <input id="draftEditDomain" placeholder="Alan adı" value="${escapeHtml(item.domain || "")}" />
+                <input id="draftEditSource" placeholder="Kaynak URL" value="${escapeHtml(item.source_url || "")}" />
+                <input id="draftEditCancel" placeholder="İptal URL" value="${escapeHtml(item.cancel_url || "")}" />
+              </div>
+              <div style="margin-top: 8px">
+                <button data-draft-action="save" data-id="${item.id}">Kaydet</button>
+                <button class="secondary" data-draft-action="cancel">Vazgeç</button>
+              </div>
+              <div class="form-error" id="draftFormError"></div>
+            </td>
+          `;
+          draftsBody.appendChild(editRow);
+        }
+      }
+
+      updateDraftToolbar();
+    }
+
+    draftsBody.addEventListener("change", (event) => {
+      const id = event.target.dataset.select;
+      if (!id) return;
+      if (event.target.checked) selectedDraftIds.add(id);
+      else selectedDraftIds.delete(id);
+      updateDraftToolbar();
+    });
+
+    draftsBody.addEventListener(
+      "error",
+      (event) => {
+        if (event.target.tagName === "IMG" && event.target.closest(".logo-tile")) {
+          markLogoFailed(event.target);
+        }
+      },
+      true
+    );
+
+    draftsBody.addEventListener("click", async (event) => {
+      const button = event.target.closest("button");
+      if (!button) return;
+      const { draftAction: action, id } = button.dataset;
+
+      if (action === "approve" || action === "hide") {
+        await setCatalogStatus(action, [id]);
+      } else if (action === "edit") {
+        draftEditingId = id;
+        renderDrafts();
+      } else if (action === "cancel") {
+        draftEditingId = null;
+        renderDrafts();
+      } else if (action === "save") {
+        const value = (elementId) => document.getElementById(elementId).value.trim();
+        const price = value("draftEditPrice");
+        const body = {
+          plan_name: value("draftEditPlan") || undefined,
+          currency: value("draftEditCurrency").toUpperCase() || undefined,
+          billing_cycle: value("draftEditCycle"),
+          category: value("draftEditCategory") || undefined,
+          domain: value("draftEditDomain"),
+          source_url: value("draftEditSource") || undefined,
+          cancel_url: value("draftEditCancel") || undefined,
+          // Elle girilen fiyat doğrulanmış sayılır (backend).
+          ...(price !== "" ? { current_price: price } : {}),
+        };
+        try {
+          await apiRequest(`/${id}`, { method: "PUT", body: JSON.stringify(body) });
+          draftEditingId = null;
+          setStatus("Taslak güncellendi.", "ok");
+          await loadCatalog();
+        } catch (err) {
+          setFormError("draftFormError", err.message);
+        }
+      }
+    });
+
+    draftSelectAll.addEventListener("change", () => {
+      for (const item of draftItems()) {
+        if (draftSelectAll.checked) selectedDraftIds.add(item.id);
+        else selectedDraftIds.delete(item.id);
+      }
+      renderDrafts();
+    });
+
+    approveSelectedButton.addEventListener("click", () =>
+      setCatalogStatus("approve", selectedVisibleDraftIds())
+    );
+
+    hideSelectedButton.addEventListener("click", () => {
+      if (confirm("Seçilen taslaklar gizlensin mi?")) {
+        setCatalogStatus("hide", selectedVisibleDraftIds());
+      }
+    });
+
+    document.getElementById("draftPricedFilter").addEventListener("change", (event) => {
+      onlyPricedDrafts = event.target.checked;
+      renderDrafts();
+    });
+
+    // Sekmeler
+    for (const tabButton of document.querySelectorAll(".tabs button")) {
+      tabButton.addEventListener("click", () => {
+        for (const other of document.querySelectorAll(".tabs button")) {
+          other.classList.toggle("active", other === tabButton);
+          document.getElementById(other.dataset.tab).hidden = other !== tabButton;
+        }
+      });
+    }
+
     function escapeHtml(value) {
       return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
         "&": "&amp;",
@@ -747,7 +1100,9 @@
       const action = button.dataset.action;
       const id = button.dataset.id;
 
-      if (action === "edit") {
+      if (action === "publish" || action === "hide") {
+        await setCatalogStatus(action === "publish" ? "approve" : "hide", [id]);
+      } else if (action === "edit") {
         editingId = id;
         renderTable();
       } else if (action === "cancel") {
@@ -797,7 +1152,7 @@
       "error",
       (event) => {
         if (event.target.tagName === "IMG" && event.target.closest(".logo-tile")) {
-          event.target.remove();
+          markLogoFailed(event.target);
         }
       },
       true

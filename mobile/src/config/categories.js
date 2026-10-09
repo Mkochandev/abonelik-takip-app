@@ -6,5 +6,8 @@ export const CATEGORIES = [
   "Yapay Zeka",
   "Bulut Depolama",
   "Üretkenlik/Tasarım",
+  "Oyun",
+  "Alışveriş/Üyelik",
+  "VPN/Güvenlik",
   "Spor",
 ];

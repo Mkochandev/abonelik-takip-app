@@ -40,7 +40,10 @@ const REASON_OPTIONS = {
     "İş dosyaları için",
   ],
   "Üretkenlik/Tasarım": ["İş projeleri için", "Freelance/müşteri işleri", "Kişisel hobi", "Okul/eğitim"],
-  Spor: ["Maç takibi", "Belirli bir takım/lig için", "Genel spor içerikleri"],
+  Oyun: ["Online oynamak için", "Oyun kütüphanesi", "Belirli bir oyun için", "Bulut depolama/kayıtlar"],
+  "Alışveriş/Üyelik": ["Ücretsiz kargo", "İndirim ve kampanyalar", "Yemek siparişi", "Ek üyelik avantajları"],
+  "VPN/Güvenlik": ["Gizlilik", "Erişim engelini aşmak", "Halka açık Wi-Fi'da güvenlik", "Şifre yönetimi"],
+  Spor: ["Maç takibi", "Belirli bir takım/lig için", "Genel spor içerikleri", "Antrenman takibi"],
 };
 
 // value, veritabanındaki usage_frequency kısıtına uyan değerdir.
