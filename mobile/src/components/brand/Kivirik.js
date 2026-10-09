@@ -16,7 +16,7 @@ function Line({ d, color, width }) {
 }
 
 // Maskot Kıvırık: kâsenin içinden çıkan erişte teli.
-// mood: selam | mutlu | sasirmis, bowl: krem | gece
+// mood: selam | mutlu | sasirmis | heyecanli (iki kol havada, gülen), bowl: krem | gece
 export function Kivirik({ size = 240, mood = "selam", bowl = "krem" }) {
   const b = BOWLS[bowl] ?? BOWLS.krem;
 
@@ -27,7 +27,7 @@ export function Kivirik({ size = 240, mood = "selam", bowl = "krem" }) {
       {mood === "selam" ? (
         <Line d="M178 104 C192 96 200 82 196 68" color={SAFRAN} width={12} />
       ) : null}
-      {mood === "sasirmis" ? (
+      {mood === "sasirmis" || mood === "heyecanli" ? (
         <>
           <Line d="M62 108 C46 96 42 78 50 64" color={SAFRAN} width={12} />
           <Line d="M178 108 C194 96 198 78 190 64" color={SAFRAN} width={12} />
@@ -38,7 +38,7 @@ export function Kivirik({ size = 240, mood = "selam", bowl = "krem" }) {
       <Line d="M74 86 C84 79 94 92 104 85" color={SAFRAN_KOYU} width={5} />
       <Line d="M136 76 C146 69 156 82 166 75" color={SAFRAN_KOYU} width={5} />
 
-      {mood === "selam" ? (
+      {mood === "selam" || mood === "heyecanli" ? (
         <>
           <Circle cx={100} cy={106} r={9.5} fill={INK} />
           <Circle cx={103.5} cy={102.5} r={3.2} fill="#FFFFFF" />

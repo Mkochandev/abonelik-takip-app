@@ -5,23 +5,58 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as api from "../api/client";
 import {
   BillingDaySheet,
+  CancelGuideSheet,
   Card,
   CategoryTag,
   GroupedList,
   GroupedListRow,
   KivirikHead,
+  KivirikQuestionSheet,
   PillButton,
   ServiceLogo,
 } from "../components";
+import { formatIsoDate } from "../components/KivirikQuestionCard";
+import { paymentChannelLabel, shareLabel } from "../config/subscriptionFields";
 import { useAuth } from "../context/AuthContext";
 import { maybeAskForReminders, rescheduleAll } from "../services/reminders";
-import { isManagedInactive } from "../services/subscriptionsSource";
+import { refreshKivirikCount } from "../services/kivirik";
+import { isManagedInactive, loadSubscriptions } from "../services/subscriptionsSource";
 import { removeGuestSubscription, updateGuestSubscription } from "../storage/guestSubscriptions";
 import { fontFamily, useTheme } from "../theme";
 import { formatBillingDay, periodLabel } from "../utils/billing";
-import { formatAmount, formatSubscriptionPrice } from "../utils/price";
+import { formatAmount, formatSubscriptionPrice, formatTRY } from "../utils/price";
 
 const APP_STORE_SUBSCRIPTIONS_URL = "https://apps.apple.com/account/subscriptions";
+
+// Düzenlenebilir bilgi satırı: solda etiket, sağda değer (ve alt satır).
+function EditableRow({ label, value, detail, action = "›", onPress }) {
+  const { colors, spacing } = useTheme();
+
+  return (
+    <GroupedListRow onPress={onPress} style={{ justifyContent: "space-between" }}>
+      <Text style={{ color: colors.text2 }}>{label}</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, flexShrink: 1 }}>
+        <View style={{ alignItems: "flex-end", flexShrink: 1 }}>
+          <Text style={{ color: colors.text, fontWeight: "600", textAlign: "right" }}>{value}</Text>
+          {detail ? (
+            <Text style={{ color: colors.text2, fontSize: 12.5, marginTop: 1, textAlign: "right" }}>
+              {detail}
+            </Text>
+          ) : null}
+        </View>
+        <Text
+          style={{
+            color: action === "›" ? colors.text2 : colors.text,
+            fontSize: action === "›" ? 18 : 13.5,
+            fontWeight: action === "›" ? "400" : "700",
+          }}
+        >
+          {action}
+        </Text>
+      </View>
+    </GroupedListRow>
+  );
+}
 
 export default function SubscriptionDetailScreen({ navigation, route }) {
   const { subscription: initialSubscription } = route.params;
@@ -39,6 +74,9 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [removing, setRemoving] = useState(false);
+  // Tek alan düzenleme (Kıvırık kartı) ve ortak iptal rehberi.
+  const [editing, setEditing] = useState(null);
+  const [cancelGuideOpen, setCancelGuideOpen] = useState(false);
 
   // erişte Premium: fiyat App Store'dan gelir, iptal App Store'da yapılır,
   // Premium bitince kayıt kalır ama "aktif değil" görünür.
@@ -77,9 +115,39 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
     };
   }, [subscription.catalog_id]);
 
+  // erişte doğrudan App Store'a; diğerleri ödeme kanalına göre rehberle.
   function handleCancel() {
-    if (cancelUrl) {
+    if (isManaged) {
       Linking.openURL(cancelUrl);
+      return;
+    }
+    setCancelGuideOpen(true);
+  }
+
+  function editField(key, initialInput = null) {
+    setEditing({
+      question: { key, user_subscription_id: subscription.id, period: "once", params: subscription },
+      initialInput,
+    });
+  }
+
+  // Düzenleme sonrası satırı sunucudan tazeler (toplamlar, kişi başı tutar).
+  async function reloadSubscription() {
+    try {
+      const fresh = (await loadSubscriptions(token)).find((item) => item.id === subscription.id);
+      if (fresh) {
+        setSubscription(fresh);
+      }
+    } catch (err) {
+      // Ekran eski veriyle kalır; Ana sayfa odaklanınca yenilenir.
+    }
+    refreshKivirikCount(token, { force: true });
+  }
+
+  function handleEditClose({ changed }) {
+    setEditing(null);
+    if (changed) {
+      reloadSubscription();
     }
   }
 
@@ -125,6 +193,19 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
 
   const price = formatSubscriptionPrice(subscription);
   const priceHistory = catalogItem?.price_history || [];
+  const shareCount = subscription.share_count ?? null;
+  const priceTry = Number(subscription.current_price_try ?? subscription.current_price ?? 0);
+  const yourPrice =
+    subscription.custom_price != null
+      ? formatAmount(subscription.custom_price, subscription.custom_currency ?? subscription.currency)
+      : formatAmount(subscription.catalog_price ?? subscription.current_price, subscription.catalog_currency ?? subscription.currency);
+  const trialValue = subscription.is_trial
+    ? subscription.trial_ends_at
+      ? `Evet, ${formatIsoDate(subscription.trial_ends_at)}`
+      : "Evet"
+    : subscription.is_trial === false
+      ? "Hayır"
+      : "—";
 
   return (
     <ScrollView
@@ -242,22 +323,40 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
             <Text style={{ color: colors.text2, fontSize: 18 }}>›</Text>
           </GroupedListRow>
         </GroupedList>
-      ) : (
+      ) : !isManaged ? (
         <GroupedList style={{ marginBottom: spacing.lg }}>
-          <GroupedListRow style={{ justifyContent: "space-between" }}>
-            <Text style={{ color: colors.text2 }}>Kullanım sıklığı</Text>
-            <Text style={{ color: colors.text, fontWeight: "600" }}>
-              {subscription.usage_frequency || "—"}
-            </Text>
-          </GroupedListRow>
-          <GroupedListRow style={{ justifyContent: "space-between" }}>
-            <Text style={{ color: colors.text2 }}>Neden</Text>
-            <Text style={{ color: colors.text, fontWeight: "600", flexShrink: 1, textAlign: "right" }}>
-              {subscription.reason || "—"}
-            </Text>
-          </GroupedListRow>
+          <EditableRow
+            label="Ödeme kanalı"
+            value={paymentChannelLabel(subscription.payment_channel) ?? "Ekle"}
+            onPress={() => editField("payment_channel")}
+          />
+          <EditableRow
+            label="Senin ödediğin"
+            value={yourPrice}
+            detail={subscription.custom_price == null ? "Katalog fiyatı" : null}
+            action="Değiştir"
+            onPress={() => editField("price_confirm", "amount")}
+          />
+          <EditableRow
+            label="Paylaşım"
+            value={shareCount == null ? "—" : shareLabel(shareCount)}
+            detail={shareCount > 1 ? `Kişi başı ${formatTRY(priceTry / shareCount)}` : null}
+            onPress={() => editField("share_count")}
+          />
+          <EditableRow label="Ücretsiz deneme" value={trialValue} onPress={() => editField("is_trial")} />
+          <EditableRow
+            label="Planlı bırakma"
+            value={subscription.planned_end_at ? formatIsoDate(subscription.planned_end_at) : "—"}
+            onPress={() => editField("planned_end")}
+          />
+          <EditableRow
+            label="Kullanım sıklığı"
+            value={subscription.usage_frequency || "—"}
+            onPress={() => editField("usage_frequency")}
+          />
+          <EditableRow label="Neden" value={subscription.reason || "—"} onPress={() => editField("reason")} />
         </GroupedList>
-      )}
+      ) : null}
 
       {/* erişte Premium'un fiyatı App Store'dan gelir; katalog fiyat geçmişi yok. */}
       {!isManaged ? (
@@ -298,7 +397,7 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
         </Card>
       ) : null}
 
-      {cancelUrl && !managedInactive ? (
+      {(isManaged ? cancelUrl && !managedInactive : true) ? (
         <View>
           <PillButton
             title={isManaged ? "İptal et" : "Aboneliği iptal et"}
@@ -308,7 +407,7 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
           <Text style={{ color: colors.text2, fontSize: 12, textAlign: "center", marginTop: spacing.sm }}>
             {isManaged
               ? "App Store abonelik yönetimi açılır"
-              : `${subscription.app_name} — iptal sayfası tarayıcıda açılır`}
+              : "Nereden ödediğine göre doğru yere götürürüm"}
           </Text>
         </View>
       ) : null}
@@ -340,6 +439,24 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
           </Text>
         )}
       </Pressable>
+
+      {!isGuest ? (
+        <KivirikQuestionSheet
+          visible={Boolean(editing)}
+          token={token}
+          editQuestion={editing}
+          onClose={handleEditClose}
+        />
+      ) : null}
+
+      <CancelGuideSheet
+        visible={cancelGuideOpen}
+        subscription={subscription}
+        cancelUrl={catalogItem?.cancel_url ?? null}
+        token={isGuest ? null : token}
+        onClose={() => setCancelGuideOpen(false)}
+        onChannelSaved={(channel) => setSubscription((current) => ({ ...current, payment_channel: channel }))}
+      />
 
       <BillingDaySheet
         items={billingSheetOpen ? [subscription] : null}

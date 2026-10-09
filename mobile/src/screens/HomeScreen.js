@@ -13,19 +13,23 @@ import {
   GroupedListRow,
   KivirikBubble,
   KivirikHead,
+  KivirikQuestionSheet,
   PillButton,
   ServiceLogo,
 } from "../components";
 import { useAuth } from "../context/AuthContext";
 import { subscribeEristeChanges } from "../services/eristeSync";
+import { refreshKivirikCount, useKivirikCount } from "../services/kivirik";
 import { maybeAskForReminders, rescheduleAll } from "../services/reminders";
 import { loadSubscriptions } from "../services/subscriptionsSource";
+import { getUserSettings } from "../services/userSettings";
 import { GUEST_LIMIT, updateGuestSubscription } from "../storage/guestSubscriptions";
 import { dismissGuestBanner, shouldShowGuestBanner } from "../storage/onboarding";
 import { fontFamily, useTheme } from "../theme";
 import { getNextBillingInfo, hasBillingDay, isYearly } from "../utils/billing";
 import { monthlyPriceTry } from "../utils/catalog";
 import { formatSubscriptionPrice, formatTRY } from "../utils/price";
+import { isCountedInTotals } from "../utils/totals";
 
 const SECTION_GAP = 26;
 
@@ -42,7 +46,7 @@ function chunkPairs(items) {
 // ve ay sonu durumu utils/billing'de).
 function getUpcomingPayments(subscriptions) {
   return subscriptions
-    .filter((sub) => hasBillingDay(sub) && !sub.reminders_disabled)
+    .filter((sub) => hasBillingDay(sub) && isCountedInTotals(sub))
     .map((sub) => ({ ...sub, ...getNextBillingInfo(sub) }))
     .sort((a, b) => a.daysLeft - b.daysLeft);
 }
@@ -82,6 +86,10 @@ export default function HomeScreen({ navigation }) {
   const [billingFlowItems, setBillingFlowItems] = useState(null);
   // erişte Premium kaydı arka planda eklendiğinde listeyi yeniden yükletir.
   const [reloadKey, setReloadKey] = useState(0);
+  // Kıvırık soru paneli ve rozetteki bekleyen soru sayısı (yalnızca hesapta).
+  const [questionsOpen, setQuestionsOpen] = useState(false);
+  const pendingCount = useKivirikCount();
+  const [settings, setSettings] = useState(null);
   const scrollRef = useRef(null);
   const subsSectionY = useRef(0);
 
@@ -101,6 +109,13 @@ export default function HomeScreen({ navigation }) {
 
       if (!token) {
         shouldShowGuestBanner().then((show) => isActive && setShowGuestBanner(show));
+        setSettings(null);
+      } else {
+        // Rozet en fazla dakikada bir yenilenir; bütçe uyarısı için ayarlar.
+        refreshKivirikCount(token);
+        getUserSettings(token)
+          .then((next) => isActive && setSettings(next))
+          .catch(() => {});
       }
 
       async function fetchSubscriptions() {
@@ -136,18 +151,20 @@ export default function HomeScreen({ navigation }) {
     }, [token, reloadKey])
   );
 
-  // Yıllık planlar aylık toplama 12'de biri olarak girer.
-  // Premium'u bitmiş erişte kaydı (reminders_disabled) ödenmediği için
-  // toplamlara girmez.
-  const paidSubscriptions = subscriptions.filter((sub) => !sub.reminders_disabled);
+  // Yıllık planlar aylık toplama 12'de biri olarak girer. Başkasının ödediği,
+  // iptal edilmiş ve Premium'u bitmiş erişte kaydı toplamlara girmez.
+  const paidSubscriptions = subscriptions.filter(isCountedInTotals);
+  const othersPay = subscriptions.filter((sub) => sub.payment_channel === "someone_else");
+  const listedSubscriptions = subscriptions.filter((sub) => sub.payment_channel !== "someone_else");
   const totalTry = paidSubscriptions.reduce((sum, sub) => sum + monthlyPriceTry(sub), 0);
   const hasUsd = subscriptions.some((sub) => sub.currency === "USD");
   // erişte Premium kaydı ücretsiz plan limitine sayılmaz.
   const limitedCount = subscriptions.filter((sub) => !sub.managed_by).length;
 
   const upcomingPayments = getUpcomingPayments(subscriptions).slice(0, 3);
+  // Eksik ödeme günü balonu yalnızca misafirde; hesapta bunu Kıvırık sorar.
   const missingBilling =
-    loading || error
+    isAuthenticated || loading || error
       ? []
       : subscriptions.filter((sub) => !hasBillingDay(sub) && !sub.reminders_disabled);
 
@@ -159,7 +176,45 @@ export default function HomeScreen({ navigation }) {
   const categoryEntries = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
   const categoryGrandTotal = categoryEntries.reduce((sum, [, value]) => sum + value, 0);
 
-  const kivirikMessage = loading || error ? null : getKivirikMessage(subscriptions);
+  const monthlyBudget = settings?.monthly_budget ?? null;
+  const overBudget = monthlyBudget != null && monthlyBudget > 0 && totalTry > monthlyBudget;
+  const hasQuestions = isAuthenticated && pendingCount > 0;
+
+  // Balon önceliği: bekleyen sorular, bütçe aşımı, olağan mesaj.
+  const kivirikMessage =
+    loading || error
+      ? null
+      : hasQuestions
+        ? null
+        : overBudget
+          ? `Bu ay aboneliklere ${formatTRY(totalTry)} gidiyor, sınırın ${formatTRY(monthlyBudget)}. Gözden geçirelim mi?`
+          : getKivirikMessage(paidSubscriptions);
+
+  // Misafirde Kıvırık soru sormaz; giriş ekranına yönlendirir.
+  function handleKivirikPress() {
+    if (!isAuthenticated) {
+      navigation.navigate("Login", {
+        promptMessage: "Giriş yaparsan sana daha çok yardımcı olabilirim.",
+      });
+      return;
+    }
+    if (pendingCount > 0) {
+      setQuestionsOpen(true);
+      return;
+    }
+    setBubbleOpen((open) => !open);
+  }
+
+  function handleQuestionsClose({ changed }) {
+    setQuestionsOpen(false);
+    if (changed) {
+      setReloadKey((key) => key + 1);
+      refreshKivirikCount(token, { force: true });
+      getUserSettings(token, { force: true })
+        .then(setSettings)
+        .catch(() => {});
+    }
+  }
 
   function goToCatalog() {
     navigation.navigate("Catalog");
@@ -179,6 +234,60 @@ export default function HomeScreen({ navigation }) {
     }
     setSubscriptions((current) =>
       current.map((sub) => (sub.id === item.id ? { ...sub, ...updates } : sub))
+    );
+  }
+
+  function renderSubscriptionRow(item) {
+    const price = formatSubscriptionPrice(item);
+    return (
+      <GroupedListRow
+        key={item.id}
+        onPress={() =>
+          navigation.navigate("SubscriptionDetail", { subscription: item })
+        }
+      >
+        <ServiceLogo
+          domain={item.domain}
+          logoUrl={item.logo_url}
+          name={item.app_name}
+          category={item.category}
+        />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontWeight: "600" }} numberOfLines={1}>
+            {item.app_name}
+          </Text>
+          {item.plan_name ? (
+            <Text style={{ color: colors.text2, fontSize: 13, marginTop: 1 }}>
+              {item.plan_name}
+            </Text>
+          ) : null}
+          {item.reason ? (
+            <Text
+              style={{
+                color: colors.text2,
+                fontSize: 13,
+                fontStyle: "italic",
+                marginTop: 1,
+              }}
+              numberOfLines={1}
+            >
+              {item.reason}
+            </Text>
+          ) : null}
+        </View>
+        <View style={{ alignItems: "flex-end" }}>
+          <Text style={{ fontWeight: "700", color: colors.text }}>
+            {price.primary}
+            {isYearly(item) ? " / yıl" : ""}
+          </Text>
+          {price.secondary ? (
+            <Text style={{ fontSize: 12, color: colors.text2 }}>{price.secondary}</Text>
+          ) : null}
+        </View>
+        <Text style={{ marginLeft: spacing.xs, color: colors.text2, fontSize: 18 }}>
+          ›
+        </Text>
+      </GroupedListRow>
     );
   }
 
@@ -202,7 +311,7 @@ export default function HomeScreen({ navigation }) {
           flexDirection: "row",
           justifyContent: "space-between",
           alignItems: "flex-start",
-          marginBottom: kivirikMessage && bubbleOpen ? spacing.sm : SECTION_GAP,
+          marginBottom: hasQuestions || (kivirikMessage && bubbleOpen) ? spacing.sm : SECTION_GAP,
         }}
       >
         <View>
@@ -212,9 +321,9 @@ export default function HomeScreen({ navigation }) {
           </Text>
         </View>
         <Pressable
-          onPress={() => setBubbleOpen((open) => !open)}
+          onPress={handleKivirikPress}
           accessibilityRole="button"
-          accessibilityLabel="Kıvırık"
+          accessibilityLabel={hasQuestions ? `Kıvırık: ${pendingCount} sorusu var` : "Kıvırık"}
           style={{
             width: 56,
             height: 56,
@@ -225,7 +334,28 @@ export default function HomeScreen({ navigation }) {
           }}
         >
           <KivirikHead size={46} />
-          {kivirikMessage ? (
+          {hasQuestions ? (
+            <View
+              style={{
+                position: "absolute",
+                top: -2,
+                right: -4,
+                minWidth: 22,
+                height: 22,
+                paddingHorizontal: 6,
+                borderRadius: 11,
+                backgroundColor: brand.biber,
+                borderWidth: 2,
+                borderColor: colors.bg,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text style={{ color: "#FFFFFF", fontSize: 12, fontWeight: "800" }}>
+                {pendingCount > 9 ? "9+" : pendingCount}
+              </Text>
+            </View>
+          ) : kivirikMessage ? (
             <View
               style={{
                 position: "absolute",
@@ -243,12 +373,44 @@ export default function HomeScreen({ navigation }) {
         </Pressable>
       </View>
 
-      {kivirikMessage && bubbleOpen ? (
-        <KivirikBubble
-          text={kivirikMessage}
-          tail="right"
+      {hasQuestions ? (
+        <Pressable
+          onPress={() => setQuestionsOpen(true)}
+          accessibilityRole="button"
+          style={({ pressed }) => ({
+            alignSelf: "flex-end",
+            maxWidth: 300,
+            marginBottom: SECTION_GAP,
+            opacity: pressed ? 0.85 : 1,
+          })}
+        >
+          <KivirikBubble tail="right">
+            <Text style={{ color: "#F5F3F7", fontSize: 15, fontWeight: "600", lineHeight: 21 }}>
+              Dur, sana soracaklarım var! {pendingCount > 9 ? "9+" : pendingCount} kısa soru.
+            </Text>
+            <Text style={{ color: brand.safran, fontSize: 13, fontWeight: "700", marginTop: 4 }}>
+              Cevapla
+            </Text>
+          </KivirikBubble>
+        </Pressable>
+      ) : kivirikMessage && bubbleOpen ? (
+        <Pressable
+          onPress={overBudget ? scrollToSubscriptions : undefined}
+          disabled={!overBudget}
+          accessibilityRole={overBudget ? "button" : undefined}
           style={{ alignSelf: "flex-end", maxWidth: 300, marginBottom: SECTION_GAP }}
-        />
+        >
+          <KivirikBubble tail="right">
+            <Text style={{ color: "#F5F3F7", fontSize: 15, fontWeight: "600", lineHeight: 21 }}>
+              {kivirikMessage}
+            </Text>
+            {overBudget ? (
+              <Text style={{ color: brand.safran, fontSize: 13, fontWeight: "700", marginTop: 4 }}>
+                Aboneliklerime bak
+              </Text>
+            ) : null}
+          </KivirikBubble>
+        </Pressable>
       ) : null}
 
       {missingBilling.length > 0 ? (
@@ -339,7 +501,7 @@ export default function HomeScreen({ navigation }) {
             {formatTRY(totalTry)}
           </Text>
           <Text style={{ color: colors.text2, fontSize: 13, marginTop: 6 }}>
-            {subscriptions.length} abonelik.
+            {paidSubscriptions.length} abonelik.
             {hasUsd ? " Dolar planları güncel kurla hesaplandı." : ""}
           </Text>
         </View>
@@ -476,63 +638,28 @@ export default function HomeScreen({ navigation }) {
             <PillButton title="Abonelik ekle" onPress={goToCatalog} />
           </View>
         ) : (
-          <GroupedList>
-            {subscriptions.map((item) => {
-              const price = formatSubscriptionPrice(item);
-              return (
-                <GroupedListRow
-                  key={item.id}
-                  onPress={() =>
-                    navigation.navigate("SubscriptionDetail", { subscription: item })
-                  }
-                >
-                  <ServiceLogo
-                    domain={item.domain}
-                    logoUrl={item.logo_url}
-                    name={item.app_name}
-                    category={item.category}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.text, fontWeight: "600" }} numberOfLines={1}>
-                      {item.app_name}
-                    </Text>
-                    {item.plan_name ? (
-                      <Text style={{ color: colors.text2, fontSize: 13, marginTop: 1 }}>
-                        {item.plan_name}
-                      </Text>
-                    ) : null}
-                    {item.reason ? (
-                      <Text
-                        style={{
-                          color: colors.text2,
-                          fontSize: 13,
-                          fontStyle: "italic",
-                          marginTop: 1,
-                        }}
-                        numberOfLines={1}
-                      >
-                        {item.reason}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <View style={{ alignItems: "flex-end" }}>
-                    <Text style={{ fontWeight: "700", color: colors.text }}>
-                      {price.primary}
-                      {isYearly(item) ? " / yıl" : ""}
-                    </Text>
-                    {price.secondary ? (
-                      <Text style={{ fontSize: 12, color: colors.text2 }}>{price.secondary}</Text>
-                    ) : null}
-                  </View>
-                  <Text style={{ marginLeft: spacing.xs, color: colors.text2, fontSize: 18 }}>
-                    ›
-                  </Text>
-                </GroupedListRow>
-              );
-            })}
-          </GroupedList>
+          <View style={{ gap: SECTION_GAP }}>
+            {listedSubscriptions.length > 0 ? (
+              <GroupedList>{listedSubscriptions.map(renderSubscriptionRow)}</GroupedList>
+            ) : null}
+            {othersPay.length > 0 ? (
+              <View>
+                <Text style={{ fontFamily: fontFamily.bold, fontSize: 17, color: colors.text }}>
+                  Başkası ödüyor
+                </Text>
+                <Text style={{ color: colors.text2, fontSize: 13, marginTop: 2, marginBottom: spacing.sm }}>
+                  Toplamlara ve hatırlatmalara katılmaz.
+                </Text>
+                <GroupedList>{othersPay.map(renderSubscriptionRow)}</GroupedList>
+              </View>
+            ) : null}
+          </View>
         )}
       </View>
+
+      {isAuthenticated ? (
+        <KivirikQuestionSheet visible={questionsOpen} token={token} onClose={handleQuestionsClose} />
+      ) : null}
 
       <BillingDaySheet
         items={billingFlowItems}

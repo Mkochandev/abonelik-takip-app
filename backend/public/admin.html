@@ -429,6 +429,31 @@
     <div class="tabs">
       <button type="button" class="active" data-tab="catalogTab">Katalog</button>
       <button type="button" data-tab="draftsTab">Taslaklar <span id="draftCount" class="badge"></span></button>
+      <button type="button" data-tab="reportsTab">Şüpheli fiyatlar <span id="reportCount" class="badge"></span></button>
+    </div>
+
+    <div id="reportsTab" hidden>
+      <div class="card">
+        <h2>Şüpheli fiyatlar</h2>
+        <p class="draft-note" style="max-width: none">
+          Kullanıcıların Kıvırık'a "farklı ödüyorum" dediği kayıtlar. Bildirilen tutarlar en yeniden
+          eskiye sıralı; kaynak sayfadan kontrol edip Katalog sekmesinden fiyatı düzelt.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th>Uygulama</th>
+              <th>Plan</th>
+              <th>Katalog fiyatı</th>
+              <th>Bildirilen tutarlar</th>
+              <th>Adet</th>
+              <th>Kaynak</th>
+            </tr>
+          </thead>
+          <tbody id="reportsBody"></tbody>
+        </table>
+      </div>
     </div>
 
     <div id="draftsTab" hidden>
@@ -632,6 +657,7 @@
         catalogCache = data.catalog;
         renderTable();
         renderDrafts();
+        loadPriceReports();
         setStatus("");
       } catch (err) {
         setStatus(err.message, "error");
@@ -1082,6 +1108,56 @@
         }
       });
     }
+
+    // --- Şüpheli fiyatlar --------------------------------------------------
+
+    const reportsBody = document.getElementById("reportsBody");
+
+    function formatReportedPrices(prices) {
+      const shown = prices.slice(0, 6).map((price) => escapeHtml(price)).join(", ");
+      return prices.length > 6 ? `${shown} …` : shown;
+    }
+
+    async function loadPriceReports() {
+      try {
+        const data = await apiRequest("/price-reports", { method: "GET" });
+        const reports = data.reports || [];
+        document.getElementById("reportCount").textContent = reports.length || "";
+        reportsBody.innerHTML = reports.length
+          ? ""
+          : `<tr><td colspan="7">Bildirilmiş şüpheli fiyat yok.</td></tr>`;
+
+        for (const report of reports) {
+          const row = document.createElement("tr");
+          const cycle = report.billing_cycle === "yearly" ? " / yıl" : " / ay";
+          const source = report.source_url
+            ? `<a href="${escapeHtml(report.source_url)}" target="_blank" rel="noopener">kaynak ↗</a>`
+            : "—";
+          row.innerHTML = `
+            <td>${logoTileHtml(report)}</td>
+            <td>${escapeHtml(report.app_name)}</td>
+            <td>${escapeHtml(report.plan_name || "")}</td>
+            <td>${escapeHtml(report.current_price ?? "—")} ${escapeHtml(report.currency)}${cycle}</td>
+            <td>${formatReportedPrices(report.reported_prices)} TRY</td>
+            <td>${report.report_count}</td>
+            <td>${source}</td>
+          `;
+          reportsBody.appendChild(row);
+        }
+      } catch (err) {
+        setStatus(err.message, "error");
+      }
+    }
+
+    reportsBody.addEventListener(
+      "error",
+      (event) => {
+        if (event.target.tagName === "IMG" && event.target.closest(".logo-tile")) {
+          event.target.remove();
+        }
+      },
+      true
+    );
 
     function escapeHtml(value) {
       return String(value ?? "").replace(/[&<>"']/g, (ch) => ({

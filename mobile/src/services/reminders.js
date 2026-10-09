@@ -4,6 +4,7 @@ import * as Notifications from "expo-notifications";
 import { getReminderSettings, updateReminderSettings } from "../storage/reminderSettings";
 import { buildReminderPlan } from "../utils/reminderPlan";
 import { loadSubscriptions } from "./subscriptionsSource";
+import { getUserSettings } from "./userSettings";
 
 // Cihazda planlanan (yerel) ödeme hatırlatmaları. Push sunucusu yok: her
 // açılışta ve abonelik/gün/fiyat değiştiğinde rescheduleAll tüm bildirimleri
@@ -69,6 +70,19 @@ async function cancelPaymentReminders() {
   );
 }
 
+// Hesaplı kullanıcıda "kaç gün önce" sunucudaki ayardan (sorulmadıysa 1),
+// misafirde cihazdaki ayardan gelir.
+async function getDaysBefore(localSettings) {
+  if (!currentToken) {
+    return localSettings.daysBefore;
+  }
+  try {
+    return (await getUserSettings(currentToken)).reminder_days_before ?? 1;
+  } catch (err) {
+    return 1;
+  }
+}
+
 async function reschedule(subscriptionsOverride) {
   const settings = await getReminderSettings();
 
@@ -88,7 +102,7 @@ async function reschedule(subscriptionsOverride) {
   }
 
   const plan = buildReminderPlan(subscriptions, {
-    daysBefore: settings.daysBefore,
+    daysBefore: await getDaysBefore(settings),
     limit: MAX_SCHEDULED,
   });
 
@@ -98,7 +112,7 @@ async function reschedule(subscriptionsOverride) {
     await Notifications.scheduleNotificationAsync({
       content: {
         body: reminder.body,
-        data: { kind: REMINDER_KIND, subscriptionId: reminder.subscriptionId },
+        data: { kind: REMINDER_KIND, type: reminder.type, subscriptionId: reminder.subscriptionId },
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,

@@ -205,3 +205,29 @@ export function syncPlan(token) {
 export function syncEristePremium(token, body) {
   return request("/user/subscriptions/eriste-premium", { method: "POST", token, body });
 }
+
+// --- Kıvırık soruları ve kullanıcı ayarları -------------------------------
+
+// Yanıt: { total, questions: [{ key, user_subscription_id, period, params }] }
+export function getKivirikQuestions(token) {
+  return request("/kivirik/questions", { token });
+}
+
+// body: { key, user_subscription_id, period, answer, value } → { ok, total }
+export function answerKivirikQuestion(token, body) {
+  return request("/kivirik/answers", { method: "POST", token, body });
+}
+
+// body: { key, user_subscription_id, mode: "later" | "never" } → { ok, total }
+export function dismissKivirikQuestion(token, body) {
+  return request("/kivirik/dismiss", { method: "POST", token, body });
+}
+
+// { reminder_days_before, is_student, monthly_budget } (sorulmamışlar null)
+export function getUserSettings(token) {
+  return request("/user/settings", { token });
+}
+
+export function updateUserSettings(token, updates) {
+  return request("/user/settings", { method: "PUT", token, body: updates });
+}

@@ -291,9 +291,17 @@ router.put("/:id", async (req, res) => {
   }
 
   try {
+    // Admin'in elle girdiği fiyat doğrulanmış sayılır. Yayındaki bir kaydın
+    // fiyatı değişirse price_history'ye (eski fiyat, yeni fiyat, kaynak =
+    // admin) kayıt düşer; Kıvırık'ın zam kartı buna bakar. "old" CTE'si
+    // güncellemeden önceki satırı okur (aynı ifadedeki CTE'ler aynı anlık
+    // görüntüyü görür).
     const { rows } = await db.query(
-      // Admin'in elle girdiği fiyat doğrulanmış sayılır.
-      `update subscriptions_catalog
+      `with old as (
+         select id, current_price from subscriptions_catalog where id = $15 for update
+       ),
+       upd as (
+       update subscriptions_catalog
        set app_name = coalesce($1, app_name),
            plan_name = coalesce($2, plan_name),
            current_price = coalesce($3::numeric, current_price),
@@ -308,7 +316,16 @@ router.put("/:id", async (req, res) => {
            domain = case when $11::boolean then $12 else domain end,
            logo_url = case when $13::boolean then $14 else logo_url end
        where id = $15
-       returning *`,
+       returning *
+       ),
+       history as (
+         insert into price_history (catalog_id, price, new_price, source)
+         select upd.id, old.current_price, upd.current_price, 'admin'
+         from upd join old on old.id = upd.id
+         where upd.status = 'active' and old.current_price is not null
+           and old.current_price is distinct from upd.current_price
+       )
+       select * from upd`,
       [...params, hasDomain, domain.value, hasLogoUrl, logoUrl.value, req.params.id]
     );
 
@@ -326,6 +343,28 @@ router.put("/:id", async (req, res) => {
       return res.status(400).json({ error: "Geçersiz category veya billing_cycle değeri" });
     }
 
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/admin/catalog/price-reports — kullanıcıların "farklı ödüyorum"
+// dediği kayıtlar (Şüpheli fiyatlar): katalog satırı, bildirilen tutarlar,
+// adet ve son bildirim tarihi; en çok bildirilen önce.
+router.get("/price-reports", async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `select sc.id as catalog_id, sc.app_name, sc.plan_name, sc.current_price, sc.currency,
+              sc.billing_cycle, sc.source_url, sc.domain, sc.logo_url, sc.category,
+              count(pr.id)::int as report_count,
+              array_agg(pr.reported_price order by pr.created_at desc) as reported_prices,
+              max(pr.created_at) as last_reported_at
+       from price_reports pr
+       join subscriptions_catalog sc on sc.id = pr.catalog_id
+       group by sc.id
+       order by report_count desc, last_reported_at desc`
+    );
+    res.json({ reports: rows });
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });

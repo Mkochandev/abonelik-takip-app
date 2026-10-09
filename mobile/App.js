@@ -1,4 +1,9 @@
-import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
+import {
+  DarkTheme,
+  DefaultTheme,
+  NavigationContainer,
+  useNavigationContainerRef,
+} from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import {
   useFonts,
@@ -6,6 +11,7 @@ import {
   BricolageGrotesque_700Bold,
   BricolageGrotesque_800ExtraBold,
 } from '@expo-google-fonts/bricolage-grotesque';
+import * as Notifications from 'expo-notifications';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
@@ -22,8 +28,10 @@ import RegisterScreen from './src/screens/RegisterScreen';
 import SubscriptionDetailScreen from './src/screens/SubscriptionDetailScreen';
 import OnboardingNavigator from './src/screens/onboarding/OnboardingNavigator';
 import { buildOnboardingRoute } from './src/screens/onboarding/steps';
+import { refreshKivirikCount } from './src/services/kivirik';
 import { configurePurchases } from './src/services/purchases';
 import { configureNotifications, rescheduleAll, setReminderToken } from './src/services/reminders';
+import { loadSubscriptions } from './src/services/subscriptionsSource';
 import { isOnboardingDone, loadOnboardingDraft, setOnboardingDone } from './src/storage/onboarding';
 import { useTheme } from './src/theme';
 
@@ -35,22 +43,63 @@ configureNotifications();
 function useReminderSync() {
   const { authReady, token } = useAuth();
 
+  // Kıvırık rozeti de aynı anlarda (açılış, oturum, ön plana dönüş) yenilenir.
+  const tokenRef = useRef(token);
+  tokenRef.current = token;
+
   useEffect(() => {
     if (!authReady) {
       return;
     }
     setReminderToken(token);
     rescheduleAll();
+    refreshKivirikCount(token, { force: true });
   }, [authReady, token]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         rescheduleAll();
+        refreshKivirikCount(tokenRef.current, { force: true });
       }
     });
     return () => subscription.remove();
   }, []);
+}
+
+// Hatırlatma bildirimine dokununca (ör. "Bugün ... bırakmayı planlamıştın")
+// ilgili aboneliğin detay ekranı açılır.
+function useNotificationNavigation(navigationRef, ready) {
+  const { token } = useAuth();
+  const tokenRef = useRef(token);
+  tokenRef.current = token;
+
+  useEffect(() => {
+    if (!ready) {
+      return undefined;
+    }
+
+    async function openFromResponse(response) {
+      const data = response?.notification?.request?.content?.data;
+      if (!data?.subscriptionId) {
+        return;
+      }
+      try {
+        const subscriptions = await loadSubscriptions(tokenRef.current);
+        const subscription = subscriptions.find((item) => item.id === data.subscriptionId);
+        if (subscription && navigationRef.isReady()) {
+          navigationRef.navigate('SubscriptionDetail', { subscription });
+        }
+      } catch (err) {
+        // Liste yüklenemezse uygulama olduğu yerde açılır.
+      }
+    }
+
+    // Uygulama kapalıyken dokunulduysa açılışta bir kez.
+    Notifications.getLastNotificationResponseAsync().then(openFromResponse).catch(() => {});
+    const subscription = Notifications.addNotificationResponseReceivedListener(openFromResponse);
+    return () => subscription.remove();
+  }, [ready]);
 }
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -103,6 +152,8 @@ function ThemedNavigationContainer() {
   const { authReady, isAuthenticated, subscriptionCount } = useAuth();
   const onboardingBoot = useOnboardingBoot();
   useReminderSync();
+  const navigationRef = useNavigationContainerRef();
+  useNotificationNavigation(navigationRef, authReady && onboardingBoot !== null);
   const initialStateRef = useRef(undefined);
   const ready = authReady && onboardingBoot !== null;
 
@@ -143,7 +194,11 @@ function ThemedNavigationContainer() {
   };
 
   return (
-    <NavigationContainer theme={navigationTheme} initialState={initialStateRef.current ?? undefined}>
+    <NavigationContainer
+      ref={navigationRef}
+      theme={navigationTheme}
+      initialState={initialStateRef.current ?? undefined}
+    >
       <RootNavigator />
       <ReminderPromptHost />
       <StatusBar style={isDark ? 'light' : 'dark'} />

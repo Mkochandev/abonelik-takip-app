@@ -15,7 +15,49 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 function whenLabel(daysBefore) {
   if (daysBefore === 0) return "Bugün";
   if (daysBefore === 1) return "Yarın";
+  if (daysBefore === 7) return "1 hafta sonra";
   return `${daysBefore} gün sonra`;
+}
+
+// Deneme bitişinden kaç gün önce hatırlatılır.
+const TRIAL_NOTICE_DAYS = 2;
+
+// 'YYYY-MM-DD' -> o günün REMINDER_HOUR'u (yerel saat), daysBefore gün önce.
+function isoDayTrigger(iso, daysBefore = 0) {
+  const [year, month, day] = iso.split("-").map(Number);
+  return new Date(year, month - 1, day - daysBefore, REMINDER_HOUR, 0, 0, 0);
+}
+
+// Ödeme dışı hatırlatmalar: deneme bitişi (2 gün önce) ve planlı bırakma
+// günü. Servis adına ek getirilmez.
+function lifecycleReminders(sub, now) {
+  const reminders = [];
+  if (sub.cancelled_at || sub.reminders_disabled) {
+    return reminders;
+  }
+  if (sub.is_trial && sub.trial_ends_at) {
+    const triggerDate = isoDayTrigger(sub.trial_ends_at, TRIAL_NOTICE_DAYS);
+    if (triggerDate > now) {
+      reminders.push({
+        type: "trial",
+        subscriptionId: sub.id,
+        triggerDate,
+        body: `${sub.app_name} denemen ${TRIAL_NOTICE_DAYS} gün sonra bitiyor.`,
+      });
+    }
+  }
+  if (sub.planned_end_at) {
+    const triggerDate = isoDayTrigger(sub.planned_end_at);
+    if (triggerDate > now) {
+      reminders.push({
+        type: "planned_end",
+        subscriptionId: sub.id,
+        triggerDate,
+        body: `Bugün ${sub.app_name} aboneliğini bırakmayı planlamıştın. İptal ettin mi?`,
+      });
+    }
+  }
+  return reminders;
 }
 
 // "229,99 TL" ya da USD'de "$20,00 (≈950,00 TL)"
@@ -41,14 +83,22 @@ function triggerFor(paymentDate, daysBefore) {
   return trigger;
 }
 
-// [{ subscriptionId, paymentDate, triggerDate, body }] — tetik zamanına göre
-// sıralı, en fazla limit kadar (iOS'ta bekleyen bildirim sınırı 64; yalnızca
-// en yakın ödemeler planlanır). reminders_disabled işaretli kayıtlar atlanır.
+// [{ type, subscriptionId, triggerDate, body }] — tetik zamanına göre sıralı,
+// en fazla limit kadar (iOS'ta bekleyen bildirim sınırı 64; yalnızca en yakın
+// olanlar planlanır). type: payment | trial | planned_end. Ödeme hatırlatması
+// başkasının ödediği, iptal edilmiş ve reminders_disabled kayıtlarda yok.
 export function buildReminderPlan(subscriptions, { daysBefore, now = new Date(), limit = 60 }) {
   const reminders = [];
 
   for (const sub of subscriptions) {
-    if (!hasBillingDay(sub) || sub.reminders_disabled) {
+    reminders.push(...lifecycleReminders(sub, now));
+
+    if (
+      !hasBillingDay(sub) ||
+      sub.reminders_disabled ||
+      sub.cancelled_at ||
+      sub.payment_channel === "someone_else"
+    ) {
       continue;
     }
 
@@ -59,6 +109,7 @@ export function buildReminderPlan(subscriptions, { daysBefore, now = new Date(),
       const triggerDate = triggerFor(paymentDate, daysBefore);
       if (triggerDate > now) {
         reminders.push({
+          type: "payment",
           subscriptionId: sub.id,
           paymentDate,
           triggerDate,

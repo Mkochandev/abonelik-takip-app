@@ -1,12 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Ödeme hatırlatma tercihleri (cihaz başına; misafir ve hesap için aynı).
-// enabled: bildirimler planlansın mı, daysBefore: 0 (aynı gün) | 1 | 3,
+// enabled: bildirimler planlansın mı, daysBefore: 0 (aynı gün) | 1 | 3 | 7
+// (misafirde; hesaplı kullanıcıda gün sayısı sunucuda, user_settings),
 // prompted: Kıvırık "haber vereyim mi?" diye sordu mu (bir kez sorulur).
 
 const STORAGE_KEY = "reminder_settings";
 
-export const DAYS_BEFORE_OPTIONS = [0, 1, 3];
+export const DAYS_BEFORE_OPTIONS = [0, 1, 3, 7];
 
 const DEFAULTS = { enabled: false, daysBefore: 1, prompted: false };
 

@@ -12,6 +12,11 @@ const {
   syncPlanFromRevenueCat,
   withTransaction,
 } = require("../services/planService");
+const {
+  SUBSCRIPTION_WITH_CATALOG_COLUMNS,
+  parseBillingFields,
+  withPriceTry,
+} = require("../services/subscriptionRows");
 
 const router = express.Router();
 
@@ -19,51 +24,12 @@ const router = express.Router();
 // için fazlasıyla yeterli; kötüye kullanımı sınırlar).
 const MAX_BULK_ITEMS = 50;
 
-// Kullanıcıya özel fiyat (custom_price, ör. erişte Premium'da App Store
-// fiyatı) doluysa katalog fiyatının yerine geçer.
-const SUBSCRIPTION_WITH_CATALOG_COLUMNS = `us.id, us.started_at, us.reason, us.usage_frequency,
-  us.price_alert_enabled, us.billing_date, us.billing_month, sc.id as catalog_id, sc.app_name,
-  sc.plan_name, coalesce(us.custom_price, sc.current_price) as current_price,
-  coalesce(us.custom_currency, sc.currency) as currency, sc.billing_cycle, sc.category,
-  sc.domain, sc.logo_url, sc.managed_by`;
-
 // erişte Premium kaydının katalogdaki yönetici değeri.
 const ERISTE_MANAGED_BY = "revenuecat";
 const ISO_CURRENCY_REGEX = /^[A-Z]{3}$/;
 
 const RETURNING_COLUMNS =
   "id, catalog_id, started_at, reason, usage_frequency, billing_date, billing_month, price_alert_enabled";
-
-function isIntInRange(value, min, max) {
-  return Number.isInteger(value) && value >= min && value <= max;
-}
-
-// Ödeme günü (1–31) ve yıllık planlar için ayı (1–12) doğrular. Boş değerler
-// null olur; ay, gün olmadan kabul edilmez.
-function parseBillingFields(source) {
-  const day = source?.billing_date ?? null;
-  const month = source?.billing_month ?? null;
-
-  if (day !== null && !isIntInRange(day, 1, 31)) {
-    return { error: "billing_date 1 ile 31 arasında bir tam sayı olmalı" };
-  }
-
-  if (month !== null && (!isIntInRange(month, 1, 12) || day === null)) {
-    return { error: "billing_month 1 ile 12 arasında olmalı ve billing_date ile gönderilmeli" };
-  }
-
-  return { billing_date: day, billing_month: month };
-}
-
-function withPriceTry(row, usdToTryRate) {
-  return {
-    ...row,
-    current_price_try:
-      row.currency === "USD"
-        ? Number((Number(row.current_price) * usdToTryRate).toFixed(2))
-        : Number(row.current_price),
-  };
-}
 
 router.use(requireAuth);
 

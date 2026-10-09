@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { REASON_OPTIONS, USAGE_FREQUENCIES } from "../config/subscriptionFields";
 import { fontFamily, useTheme } from "../theme";
 import { isYearly, periodLabel } from "../utils/billing";
 import { formatSubscriptionPrice } from "../utils/price";
@@ -19,39 +20,6 @@ import { BillingDayPicker } from "./BillingDayPicker";
 import { KivirikBubble, KivirikHead } from "./brand";
 import { PillButton } from "./PillButton";
 import { ServiceLogo } from "./ServiceLogo";
-
-const REASON_OPTIONS = {
-  "Video/Dizi-Film": [
-    "Belirli bir dizi/film için",
-    "Genel eğlence takibi",
-    "Aile/ev arkadaşıyla ortak",
-    "Spor/belgesel içerikleri",
-  ],
-  Müzik: ["Günlük müzik dinleme", "Playlist/podcast takibi", "Reklamsız dinleme", "Offline indirme"],
-  "Kitap/Sesli Kitap": [
-    "Belirli bir kitap/seri için",
-    "Düzenli okuma alışkanlığı",
-    "Yolda/işte dinleme",
-  ],
-  "Yapay Zeka": ["İş/proje için", "Kod yazarken yardım", "Öğrenme/araştırma", "Kişisel kullanım"],
-  "Bulut Depolama": [
-    "Fotoğraf/video yedekleme",
-    "Cihazlar arası senkronizasyon",
-    "İş dosyaları için",
-  ],
-  "Üretkenlik/Tasarım": ["İş projeleri için", "Freelance/müşteri işleri", "Kişisel hobi", "Okul/eğitim"],
-  Oyun: ["Online oynamak için", "Oyun kütüphanesi", "Belirli bir oyun için", "Bulut depolama/kayıtlar"],
-  "Alışveriş/Üyelik": ["Ücretsiz kargo", "İndirim ve kampanyalar", "Yemek siparişi", "Ek üyelik avantajları"],
-  "VPN/Güvenlik": ["Gizlilik", "Erişim engelini aşmak", "Halka açık Wi-Fi'da güvenlik", "Şifre yönetimi"],
-  Spor: ["Maç takibi", "Belirli bir takım/lig için", "Genel spor içerikleri", "Antrenman takibi"],
-};
-
-// value, veritabanındaki usage_frequency kısıtına uyan değerdir.
-const USAGE_FREQUENCIES = [
-  { label: "Her gün", value: "Her gün" },
-  { label: "Haftada birkaç", value: "Haftada birkaç" },
-  { label: "Nadiren, aslında unuttum", value: "Nadiren" },
-];
 
 const STEP_COUNT = 3;
 

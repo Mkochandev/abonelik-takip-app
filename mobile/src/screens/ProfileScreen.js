@@ -17,10 +17,11 @@ import {
   getReminderSettings,
   updateReminderSettings,
 } from "../storage/reminderSettings";
+import { getUserSettings, updateUserSettings } from "../services/userSettings";
 import { fontFamily, useTheme } from "../theme";
 import { buildOnboardingRoute } from "./onboarding/steps";
 
-const DAYS_BEFORE_LABELS = { 0: "Aynı gün", 1: "1 gün önce", 3: "3 gün önce" };
+const DAYS_BEFORE_LABELS = { 0: "Aynı gün", 1: "1 gün önce", 3: "3 gün önce", 7: "1 hafta önce" };
 
 function showPermissionDeniedAlert() {
   Alert.alert(
@@ -34,20 +35,47 @@ function showPermissionDeniedAlert() {
 }
 
 // Ödeme hatırlatmaları: aç/kapa ve kaç gün önce. Misafirde de çalışır.
+// Aç/kapa cihazda; "kaç gün önce" hesaplı kullanıcıda sunucuda
+// (user_settings.reminder_days_before, sorulmadıysa 1), misafirde cihazda.
 function ReminderSettingsSection() {
+  const { token } = useAuth();
   const { colors, spacing } = useTheme();
   const [settings, setSettings] = useState(null);
+  const [serverDays, setServerDays] = useState(null);
 
   // Kıvırık'ın sorusu başka bir ekranda cevaplanmış olabilir; her odakta oku.
   useFocusEffect(
     useCallback(() => {
       getReminderSettings().then(setSettings);
-    }, [])
+      if (token) {
+        getUserSettings(token)
+          .then((next) => setServerDays(next.reminder_days_before ?? 1))
+          .catch(() => setServerDays(1));
+      }
+    }, [token])
   );
+
+  const daysBefore = token ? serverDays ?? 1 : settings?.daysBefore;
 
   async function apply(updates) {
     setSettings(await updateReminderSettings(updates));
     rescheduleAll();
+  }
+
+  async function chooseDays(days) {
+    if (!token) {
+      await apply({ daysBefore: days });
+      return;
+    }
+    const previous = serverDays;
+    setServerDays(days);
+    try {
+      await updateUserSettings(token, { reminder_days_before: days });
+      rescheduleAll();
+    } catch (err) {
+      setServerDays(previous);
+      Alert.alert("Kaydedilemedi", err.message);
+    }
   }
 
   async function handleToggle(value) {
@@ -80,8 +108,8 @@ function ReminderSettingsSection() {
             <Chip
               key={days}
               label={DAYS_BEFORE_LABELS[days]}
-              selected={settings.daysBefore === days}
-              onPress={() => apply({ daysBefore: days })}
+              selected={daysBefore === days}
+              onPress={() => chooseDays(days)}
             />
           ))}
         </GroupedListRow>

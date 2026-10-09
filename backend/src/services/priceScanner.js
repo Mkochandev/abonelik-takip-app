@@ -115,8 +115,9 @@ async function scanSinglePrice(catalogItem) {
 
     if (priceChanged) {
       await db.query(
-        "insert into price_history (catalog_id, price, changed_at) values ($1, $2, now())",
-        [catalogItem.id, oldPrice]
+        `insert into price_history (catalog_id, price, new_price, source, changed_at)
+         values ($1, $2, $3, 'scanner', now())`,
+        [catalogItem.id, oldPrice, price]
       );
 
       await db.query(
