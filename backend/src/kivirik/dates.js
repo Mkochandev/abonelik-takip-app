@@ -14,6 +14,34 @@ function istanbulDay(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE }).format(date);
 }
 
+// Soruların "bugün"ü. Geliştirmede KIVIRIK_TODAY=YYYY-MM-DD ile değiştirilebilir
+// (aylık/3 aylık soruları dönemi elle değiştirerek denemek için);
+// production'da yok sayılır.
+function kivirikToday(now = new Date()) {
+  const override = process.env.NODE_ENV !== "production" ? process.env.KIVIRIK_TODAY : null;
+  return override && /^\d{4}-\d{2}-\d{2}$/.test(override) ? override : istanbulDay(now);
+}
+
+function isoToUtc(iso) {
+  const [year, month, day] = iso.split("-").map(Number);
+  return Date.UTC(year, month - 1, day);
+}
+
+// b - a (gün).
+function daysBetweenIso(a, b) {
+  return Math.round((isoToUtc(b) - isoToUtc(a)) / DAY_MS);
+}
+
+// '2026-10-10' -> '2026-10'
+function monthKey(iso) {
+  return iso.slice(0, 7);
+}
+
+// '2026-10-10' -> '2026-Q4'
+function quarterKey(iso) {
+  return `${iso.slice(0, 4)}-Q${Math.ceil(Number(iso.slice(5, 7)) / 3)}`;
+}
+
 function addDaysIso(iso, days) {
   const [year, month, day] = iso.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day) + days * DAY_MS).toISOString().slice(0, 10);
@@ -47,4 +75,12 @@ function firstBillingDayAfter(sub, afterIso) {
   return null;
 }
 
-module.exports = { addDaysIso, firstBillingDayAfter, istanbulDay };
+module.exports = {
+  addDaysIso,
+  daysBetweenIso,
+  firstBillingDayAfter,
+  istanbulDay,
+  kivirikToday,
+  monthKey,
+  quarterKey,
+};

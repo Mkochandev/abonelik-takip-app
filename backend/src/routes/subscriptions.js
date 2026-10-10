@@ -12,6 +12,7 @@ const {
   syncPlanFromRevenueCat,
   withTransaction,
 } = require("../services/planService");
+const { expireTrials } = require("../services/kivirikService");
 const {
   SUBSCRIPTION_WITH_CATALOG_COLUMNS,
   parseBillingFields,
@@ -281,6 +282,9 @@ router.post("/bulk", async (req, res) => {
 // GET /api/user/subscriptions — kullanıcının seçtiği abonelikler, katalog bilgisiyle birlikte
 router.get("/", async (req, res) => {
   try {
+    // Bitiş günü geçmiş denemeler deneme olmaktan çıkar.
+    await expireTrials(req.user.id);
+
     const { rows } = await db.query(
       `select ${SUBSCRIPTION_WITH_CATALOG_COLUMNS}
        from user_subscriptions us

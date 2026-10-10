@@ -14,6 +14,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import * as api from "../api/client";
+import { FOLLOW_UP_UNUSED, KIVIRIK_QUESTIONS } from "../config/kivirikQuestions";
 import { setKivirikTotal } from "../services/kivirik";
 import { rescheduleAll } from "../services/reminders";
 import { loadSubscriptions } from "../services/subscriptionsSource";
@@ -22,6 +23,7 @@ import { fontFamily, useTheme } from "../theme";
 import { formatTRY } from "../utils/price";
 import { sumCountedMonthlyTry } from "../utils/totals";
 import { Kivirik } from "./brand";
+import { CancelGuideContent } from "./CancelGuideSheet";
 import { KivirikQuestionCard } from "./KivirikQuestionCard";
 import { PillButton } from "./PillButton";
 
@@ -30,10 +32,14 @@ export const STORE_SUBSCRIPTIONS_URL =
     ? "https://play.google.com/store/account/subscriptions"
     : "https://apps.apple.com/account/subscriptions";
 
-// Bu cevaplar paneli kapatıp başka ekrana götürür (sonraki soruya geçmez).
-function navigationFor(key, answer, params) {
-  if (key === "cancel_verify" && answer === "yes") {
+// Paneli kapatıp başka ekrana götüren aksiyonlar (sonraki soruya geçmez).
+function navigationFor(action, params) {
+  if (action === "refund") {
     return ["RefundSteps", { subscription: params }];
+  }
+  if (action === "cheaper") {
+    // Servisin katalog kartı açık, planlar fiyata göre sıralı.
+    return ["MainTabs", { screen: "Catalog", params: { focusApp: params.app_name, focusAt: Date.now() } }];
   }
   return null;
 }
@@ -56,6 +62,9 @@ function SheetBody({ token, editQuestion, onClose }) {
   const [phase, setPhase] = useState(isEdit ? "question" : "loading");
   const [questions, setQuestions] = useState(isEdit ? [editQuestion.question] : []);
   const [index, setIndex] = useState(0);
+  // Aynı soru içindeki ara adım: null | "followUp" (takip sorusu) | "guide"
+  // (iptal rehberi).
+  const [step, setStep] = useState(null);
   const [busy, setBusy] = useState(false);
   const [changed, setChanged] = useState(false);
   const [monthlyTotal, setMonthlyTotal] = useState(null);
@@ -100,6 +109,7 @@ function SheetBody({ token, editQuestion, onClose }) {
   }
 
   function next() {
+    setStep(null);
     if (index + 1 < questions.length) {
       setIndex(index + 1);
     } else {
@@ -124,13 +134,20 @@ function SheetBody({ token, editQuestion, onClose }) {
   const question = questions[index];
 
   function answer({ answer: value, value: extra }) {
-    const target = navigationFor(question.key, value, question.params);
+    const config = KIVIRIK_QUESTIONS[question.key];
+    const action = config.action?.(value) ?? null;
+    const target = navigationFor(action, question.params);
     const onSuccess = target
       ? () => {
+          rescheduleAll();
           onClose({ changed: true });
           navigation.navigate(...target);
         }
-      : next;
+      : action === "guide"
+        ? () => setStep("guide")
+        : config.followUp?.(value)
+          ? () => setStep("followUp")
+          : next;
     run(async () => {
       const result = await api.answerKivirikQuestion(token, {
         key: question.key,
@@ -152,6 +169,15 @@ function SheetBody({ token, editQuestion, onClose }) {
         mode,
       })
     );
+  }
+
+  // Takip sorusunun cevabı kaydedilmez; yalnızca rehbere götürür.
+  function answerFollowUp({ answer: value }) {
+    if (value === "guide") {
+      setStep("guide");
+    } else {
+      next();
+    }
   }
 
   const bowl = isDark ? "krem" : "gece";
@@ -223,18 +249,28 @@ function SheetBody({ token, editQuestion, onClose }) {
           </>
         ) : null}
 
-        {isQuestion ? (
+        {isQuestion && step === "guide" ? (
+          <CancelGuideContent
+            subscription={{ ...question.params, id: question.user_subscription_id }}
+            cancelUrl={question.params?.cancel_url ?? null}
+            token={token}
+            onClose={next}
+            onChannelSaved={() => setChanged(true)}
+          />
+        ) : isQuestion ? (
           <KivirikQuestionCard
-            key={`${question.key}-${question.user_subscription_id ?? "user"}-${index}`}
+            key={`${question.key}-${question.user_subscription_id ?? "user"}-${index}-${step ?? ""}`}
             question={question}
             index={index}
             count={questions.length}
             busy={busy}
-            onAnswer={answer}
+            onAnswer={step === "followUp" ? answerFollowUp : answer}
             onSkip={() => dismiss("later")}
             onNever={() => dismiss("never")}
-            initialInput={editQuestion?.initialInput ?? null}
+            onDismiss={dismiss}
+            initialInput={step ? null : editQuestion?.initialInput ?? null}
             hideFooter={isEdit}
+            override={step === "followUp" ? FOLLOW_UP_UNUSED : null}
           />
         ) : null}
 

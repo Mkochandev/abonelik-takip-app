@@ -43,9 +43,10 @@ export function cancelGuideFor(channel, cancelUrl) {
   }
 }
 
-function GuideBody({ subscription, cancelUrl, token, onClose, onChannelSaved }) {
-  const { colors, isDark, spacing, radius } = useTheme();
-  const insets = useSafeAreaInsets();
+// Rehberin içeriği (panel kabı olmadan): Kıvırık soru panelinde de
+// kullanılır. Kanal bilinmiyorsa önce kanalı sorar.
+export function CancelGuideContent({ subscription, cancelUrl, token, onClose, onChannelSaved }) {
+  const { colors, isDark } = useTheme();
   const [channel, setChannel] = useState(subscription.payment_channel ?? null);
   const [busy, setBusy] = useState(false);
   const guide = cancelGuideFor(channel, cancelUrl);
@@ -73,12 +74,86 @@ function GuideBody({ subscription, cancelUrl, token, onClose, onChannelSaved }) 
     }
   }
 
+  return guide ? (
+    <>
+      <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 10 }}>
+        <KivirikHead size={64} mood="dusunceli" />
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: isDark ? "#26232D" : "#15131A",
+            borderRadius: 20,
+            borderBottomLeftRadius: 6,
+            paddingVertical: 14,
+            paddingHorizontal: 16,
+          }}
+        >
+          <Text style={{ fontSize: 12, fontWeight: "700", color: "#FFC53D" }}>Kıvırık</Text>
+          <Text
+            style={{
+              marginTop: 2,
+              fontFamily: fontFamily.bold,
+              fontSize: 17,
+              lineHeight: 23,
+              color: "#F5F3F7",
+            }}
+          >
+            {guide.text}
+          </Text>
+        </View>
+      </View>
+      <View style={{ gap: 10 }}>
+        {guide.action ? (
+          <PillButton
+            title={guide.action.label}
+            onPress={() => {
+              Linking.openURL(guide.action.url).catch(() => {});
+              onClose();
+            }}
+          />
+        ) : null}
+        <PillButton
+          title="Nereden ödediğimi değiştir"
+          variant="outline"
+          onPress={() => setChannel(null)}
+        />
+        <Pressable
+          onPress={onClose}
+          accessibilityRole="button"
+          style={{ height: 44, alignItems: "center", justifyContent: "center" }}
+        >
+          <Text style={{ fontSize: 15, fontWeight: "600", color: colors.text2 }}>Kapat</Text>
+        </Pressable>
+      </View>
+    </>
+  ) : (
+    // Kart seçenekleri kaydırılabilir alanda; kap yüksekliği sabit değilse
+    // (kendi paneli) en az bu kadar yer açılır.
+    <View style={{ flex: 1, minHeight: 560 }}>
+      <KivirikQuestionCard
+        question={{
+          key: "payment_channel",
+          user_subscription_id: subscription.id,
+          period: "once",
+          params: subscription,
+        }}
+        busy={busy}
+        onAnswer={saveChannel}
+        hideFooter
+      />
+    </View>
+  );
+}
+
+function GuideBody({ onClose, ...props }) {
+  const { colors, spacing, radius } = useTheme();
+  const insets = useSafeAreaInsets();
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.scrim, justifyContent: "flex-end" }}>
       <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel="Kapat" />
       <View
         style={{
-          height: guide ? undefined : 640,
           maxHeight: "92%",
           backgroundColor: colors.card,
           borderTopLeftRadius: radius.sheet,
@@ -92,72 +167,7 @@ function GuideBody({ subscription, cancelUrl, token, onClose, onChannelSaved }) 
         <View
           style={{ width: 40, height: 5, borderRadius: 3, backgroundColor: colors.divider, alignSelf: "center" }}
         />
-
-        {guide ? (
-          <>
-            <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 10 }}>
-              <KivirikHead size={64} mood="dusunceli" />
-              <View
-                style={{
-                  flex: 1,
-                  backgroundColor: isDark ? "#26232D" : "#15131A",
-                  borderRadius: 20,
-                  borderBottomLeftRadius: 6,
-                  paddingVertical: 14,
-                  paddingHorizontal: 16,
-                }}
-              >
-                <Text style={{ fontSize: 12, fontWeight: "700", color: "#FFC53D" }}>Kıvırık</Text>
-                <Text
-                  style={{
-                    marginTop: 2,
-                    fontFamily: fontFamily.bold,
-                    fontSize: 17,
-                    lineHeight: 23,
-                    color: "#F5F3F7",
-                  }}
-                >
-                  {guide.text}
-                </Text>
-              </View>
-            </View>
-            <View style={{ gap: 10 }}>
-              {guide.action ? (
-                <PillButton
-                  title={guide.action.label}
-                  onPress={() => {
-                    Linking.openURL(guide.action.url).catch(() => {});
-                    onClose();
-                  }}
-                />
-              ) : null}
-              <PillButton
-                title="Nereden ödediğimi değiştir"
-                variant="outline"
-                onPress={() => setChannel(null)}
-              />
-              <Pressable
-                onPress={onClose}
-                accessibilityRole="button"
-                style={{ height: 44, alignItems: "center", justifyContent: "center" }}
-              >
-                <Text style={{ fontSize: 15, fontWeight: "600", color: colors.text2 }}>Kapat</Text>
-              </Pressable>
-            </View>
-          </>
-        ) : (
-          <KivirikQuestionCard
-            question={{
-              key: "payment_channel",
-              user_subscription_id: subscription.id,
-              period: "once",
-              params: subscription,
-            }}
-            busy={busy}
-            onAnswer={saveChannel}
-            hideFooter
-          />
-        )}
+        <CancelGuideContent {...props} onClose={onClose} />
       </View>
     </View>
   );

@@ -84,9 +84,10 @@ export function Kivirik({ size = 240, mood = "selam", bowl = "krem" }) {
 }
 
 // Küçük kafa: konuşma balonlarının yanında ve ana sayfa başlığında.
-// mood: normal | dusunceli
+// mood: normal | dusunceli | sasirmis (zam kartı)
 export function KivirikHead({ size = 48, mood = "normal" }) {
   const thinking = mood === "dusunceli";
+  const surprised = mood === "sasirmis";
   const shineDx = thinking ? 0 : 2.5;
   const shineCy = thinking ? 61 : 63.5;
 
@@ -95,13 +96,26 @@ export function KivirikHead({ size = 48, mood = "normal" }) {
       <Line d="M58 22 C52 10 64 0 74 6 C82 11 77 22 68 19" color={SAFRAN} width={8} />
       <Ellipse cx={60} cy={66} rx={50} ry={44} fill={SAFRAN} />
       <Line d="M24 52 C32 46 40 56 48 50" color={SAFRAN_KOYU} width={4} />
-      <Circle cx={44} cy={66} r={7.5} fill={INK} />
-      <Circle cx={44 + shineDx} cy={shineCy} r={2.5} fill="#FFFFFF" />
-      <Circle cx={76} cy={66} r={7.5} fill={INK} />
-      <Circle cx={76 + shineDx} cy={shineCy} r={2.5} fill="#FFFFFF" />
+      {surprised ? (
+        <>
+          <Circle cx={44} cy={64} r={10} fill="#FFFFFF" />
+          <Circle cx={44} cy={65} r={5.5} fill={INK} />
+          <Circle cx={76} cy={64} r={10} fill="#FFFFFF" />
+          <Circle cx={76} cy={65} r={5.5} fill={INK} />
+        </>
+      ) : (
+        <>
+          <Circle cx={44} cy={66} r={7.5} fill={INK} />
+          <Circle cx={44 + shineDx} cy={shineCy} r={2.5} fill="#FFFFFF" />
+          <Circle cx={76} cy={66} r={7.5} fill={INK} />
+          <Circle cx={76 + shineDx} cy={shineCy} r={2.5} fill="#FFFFFF" />
+        </>
+      )}
       <Ellipse cx={32} cy={80} rx={7} ry={4.5} fill={MANDALINA} opacity={0.6} />
       <Ellipse cx={88} cy={80} rx={7} ry={4.5} fill={MANDALINA} opacity={0.6} />
-      {thinking ? (
+      {surprised ? (
+        <Ellipse cx={60} cy={86} rx={5.5} ry={7} fill={INK} />
+      ) : thinking ? (
         <Line d="M53 82 H67" color={INK} width={4} />
       ) : (
         <Line d="M52 80 Q60 88 68 80" color={INK} width={4} />

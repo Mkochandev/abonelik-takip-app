@@ -3,7 +3,7 @@
 // src/kivirik/questions.js'te.
 
 const db = require("../config/db");
-const { istanbulDay } = require("../kivirik/dates");
+const { istanbulDay, kivirikToday } = require("../kivirik/dates");
 const { QUESTIONS, QUESTIONS_BY_KEY } = require("../kivirik/questions");
 const { getUsdToTryRate } = require("./exchangeRate");
 const {
@@ -14,7 +14,8 @@ const {
 } = require("./subscriptionRows");
 
 const MAX_QUESTIONS = 3;
-const LATER_DAYS = 7;
+// Ertelemeler: "Geç" 7 gün, "Yarın tekrar hatırlat" 1 gün, "Bunu bir daha sorma" süresiz.
+const DISMISS_DAYS = { later: 7, tomorrow: 1, never: null };
 const MAX_AMOUNT = 1_000_000;
 
 // Kullanıcının istemciden değiştirebildiği ayar kolonları (whitelist).
@@ -79,6 +80,32 @@ async function loadSubscriptions(userId, client = db) {
   return rows.map((row) => withPriceTry(row, usdToTryRate));
 }
 
+// Bitiş günü geçmiş denemeler artık deneme değildir (cron yok; abonelikler
+// okunurken güncellenir).
+async function expireTrials(userId, client = db) {
+  await client.query(
+    `update user_subscriptions set is_trial = false
+     where user_id = $1 and is_trial and trial_ends_at < $2::date`,
+    [userId, kivirikToday()]
+  );
+}
+
+// Abonelik başına, eklenmesinden sonraki son katalog fiyat değişikliği
+// (zam kartı). Eski tarama kayıtlarında new_price yok; onlar atlanır.
+async function loadLatestPriceChanges(userId, client = db) {
+  const { rows } = await client.query(
+    `select distinct on (us.id) us.id as user_subscription_id, ph.id, ph.price, ph.new_price,
+            ph.changed_at
+     from user_subscriptions us
+     join price_history ph on ph.catalog_id = us.catalog_id
+     where us.user_id = $1 and us.cancelled_at is null and ph.new_price is not null
+       and ph.changed_at > us.started_at
+     order by us.id, ph.changed_at desc`,
+    [userId]
+  );
+  return new Map(rows.map(({ user_subscription_id, ...change }) => [user_subscription_id, change]));
+}
+
 function stateKey(key, subscriptionId, period) {
   return `${key}|${subscriptionId ?? ""}|${period}`;
 }
@@ -100,6 +127,8 @@ function subscriptionParams(sub) {
     usage_frequency: sub.usage_frequency,
     payment_channel: sub.payment_channel,
     cancel_url: sub.cancel_url,
+    // Takip cümlesi: "Yılda {yearly_try} ediyor."
+    yearly_try: Math.round(monthlyPriceTry(sub) * 12 * 100) / 100,
   };
 }
 
@@ -116,9 +145,11 @@ function pendingPeriodFor(question, ctx) {
 // bekleyen soru tetiklemeliyse odur (ana sayfa balonu onu söyler).
 async function getPendingQuestions(userId) {
   const now = new Date();
-  const [settings, allSubs, answersResult, dismissalsResult] = await Promise.all([
+  await expireTrials(userId);
+  const [settings, allSubs, priceChanges, answersResult, dismissalsResult] = await Promise.all([
     getSettings(userId),
     loadSubscriptions(userId),
+    loadLatestPriceChanges(userId),
     db.query(
       "select question_key, user_subscription_id, period from kivirik_answers where user_id = $1",
       [userId]
@@ -136,7 +167,10 @@ async function getPendingQuestions(userId) {
   const dismissed = new Set(
     dismissalsResult.rows.map((row) => stateKey(row.question_key, row.user_subscription_id, "-"))
   );
-  const todayIso = istanbulToday(now);
+  const todayIso = kivirikToday(now);
+  for (const sub of allSubs) {
+    sub.latest_price_change = priceChanges.get(sub.id) ?? null;
+  }
   const subs = allSubs.filter((sub) => !sub.cancelled_at);
   const cancelledSubs = allSubs.filter((sub) => sub.cancelled_at);
   const pending = [];
@@ -319,8 +353,27 @@ async function applyEffect(client, { userId, question, answer, value, sub }) {
     }
     case "store_check":
       return null;
+    case "trial_ending": {
+      // "Devam edeceğim": ödeme günü deneme bitiş günü olur; deneme bitince
+      // is_trial kendiliğinden false olur (expireTrials). "İptal edeceğim"
+      // istemcide iptal rehberini açar.
+      if (answer !== "continue") return null;
+      if (!sub.trial_ends_at) throw new KivirikError("Deneme bitiş tarihi yok");
+      const [, month, day] = sub.trial_ends_at.split("-").map(Number);
+      const yearly = sub.billing_cycle === "yearly";
+      await updateSubscription(client, sub.id, {
+        billing_date: day,
+        billing_month: yearly ? month : null,
+      });
+      return sub.trial_ends_at;
+    }
     case "cancel_verify":
       // "Evet" iade adımlarını açar (istemci); kayıt yalnızca cevaptır.
+      return null;
+    case "price_increase":
+    case "monthly_usage_check":
+    case "value_check":
+      // Kayıt yalnızca cevaptır; iptal rehberi ve plan karşılaştırması istemcide.
       return null;
     default:
       throw new KivirikError("Bilinmeyen soru");
@@ -354,7 +407,8 @@ async function answerQuestion(userId, body, withTransaction) {
     let sub = null;
     if (subscriptionId) {
       const { rows } = await client.query(
-        `select us.id, us.catalog_id, sc.billing_cycle
+        `select us.id, us.catalog_id, sc.billing_cycle,
+                to_char(us.trial_ends_at, 'YYYY-MM-DD') as trial_ends_at
          from user_subscriptions us
          join subscriptions_catalog sc on sc.id = us.catalog_id
          where us.id = $1 and us.user_id = $2 and sc.managed_by is null
@@ -379,15 +433,17 @@ async function answerQuestion(userId, body, withTransaction) {
   });
 }
 
-// "Geç" (7 gün sonra tekrar) ya da "Bunu bir daha sorma".
+// "Geç" (7 gün sonra tekrar), "Yarın tekrar hatırlat" (1 gün) ya da
+// "Bunu bir daha sorma".
 async function dismissQuestion(userId, body) {
   const question = QUESTIONS_BY_KEY.get(body?.key);
   if (!question) {
     throw new KivirikError("Bilinmeyen soru");
   }
-  if (body.mode !== "later" && body.mode !== "never") {
-    throw new KivirikError("mode later ya da never olmalı");
+  if (!Object.prototype.hasOwnProperty.call(DISMISS_DAYS, body.mode)) {
+    throw new KivirikError("mode later, tomorrow ya da never olmalı");
   }
+  const days = DISMISS_DAYS[body.mode];
 
   const subscriptionId = question.scope === "subscription" ? body.user_subscription_id : null;
   if (question.scope === "subscription") {
@@ -402,10 +458,10 @@ async function dismissQuestion(userId, body) {
 
   await db.query(
     `insert into kivirik_dismissals (user_id, question_key, user_subscription_id, until)
-     values ($1, $2, $3, case when $4 then now() + interval '${LATER_DAYS} days' else null end)
+     values ($1, $2, $3, now() + make_interval(days => $4::int))
      on conflict on constraint kivirik_dismissals_unique
      do update set until = excluded.until, created_at = now()`,
-    [userId, question.key, subscriptionId, body.mode === "later"]
+    [userId, question.key, subscriptionId, days]
   );
 }
 
@@ -413,6 +469,7 @@ module.exports = {
   KivirikError,
   answerQuestion,
   dismissQuestion,
+  expireTrials,
   getPendingQuestions,
   getSettings,
   istanbulToday,

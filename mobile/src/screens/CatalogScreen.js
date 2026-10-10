@@ -25,9 +25,16 @@ import {
 } from "../storage/guestSubscriptions";
 import { fontFamily, useTheme } from "../theme";
 import { isYearly } from "../utils/billing";
+import { monthlyPriceTry } from "../utils/catalog";
 import { formatSubscriptionPrice } from "../utils/price";
 
-export default function CatalogScreen({ navigation }) {
+// Planlar aylık karşılığa göre ucuzdan pahalıya (zam kartındaki "Daha ucuz
+// plana bakayım" bu sırayla karşılaştırır).
+function sortPlansByPrice(plans) {
+  return [...plans].sort((a, b) => monthlyPriceTry(a) - monthlyPriceTry(b));
+}
+
+export default function CatalogScreen({ navigation, route }) {
   const { token, isAuthenticated, plan: userPlan, limit } = useAuth();
   const { colors, spacing, typography } = useTheme();
   const insets = useSafeAreaInsets();
@@ -44,6 +51,18 @@ export default function CatalogScreen({ navigation }) {
   const [pendingPlanId, setPendingPlanId] = useState(null);
   const [reasonPlan, setReasonPlan] = useState(null);
   const [pendingPaywallPlan, setPendingPaywallPlan] = useState(null);
+
+  // Kıvırık'ın zam kartından gelindiyse servis aranır ve kartı açılır.
+  const focusApp = route?.params?.focusApp ?? null;
+  const focusAt = route?.params?.focusAt ?? null;
+
+  useEffect(() => {
+    if (focusApp) {
+      setSelectedCategory(null);
+      setQuery(focusApp);
+      setExpandedApp(focusApp);
+    }
+  }, [focusApp, focusAt]);
 
   useEffect(() => {
     const searchTerm = query.trim();
@@ -359,7 +378,7 @@ export default function CatalogScreen({ navigation }) {
 
                 {isExpanded && (
                   <View>
-                    {item.plans.map((plan) => {
+                    {sortPlansByPrice(item.plans).map((plan) => {
                       const isSelected = Boolean(selections[plan.id]);
                       const isPending = pendingPlanId === plan.id;
                       const price = formatSubscriptionPrice(plan);

@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import Svg, { Circle, Path } from "react-native-svg";
 
 import { KIVIRIK_QUESTIONS } from "../config/kivirikQuestions";
 import { fontFamily, useTheme } from "../theme";
 import { MONTH_NAMES, isYearly, periodLabel } from "../utils/billing";
-import { formatSubscriptionPrice } from "../utils/price";
+import { formatAmount, formatSubscriptionPrice } from "../utils/price";
 import { BillingDayPicker } from "./BillingDayPicker";
 import { KivirikHead } from "./brand";
 import { ServiceLogo } from "./ServiceLogo";
@@ -14,13 +15,66 @@ const BUBBLE_NOTE = "#CFCBD6";
 const SAFRAN = "#FFC53D";
 
 // Bu sorularda Kıvırık düşünceli bakar (fiyat, süre gibi kontrol soruları).
-const THINKING_KEYS = new Set([
-  "price_confirm",
-  "planned_end",
-  "monthly_budget",
-  "is_trial",
-  "cancel_verify",
-]);
+// Yeni sorular yüzü config'teki mood ile seçer.
+const THINKING_KEYS = new Set(["price_confirm", "planned_end", "monthly_budget", "is_trial"]);
+
+function ArrowUpIcon({ color, size = 12 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 12 12">
+      <Path
+        d="M6 10.5V1.8M2.2 5.4 6 1.6l3.8 3.8"
+        stroke={color}
+        strokeWidth={1.9}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </Svg>
+  );
+}
+
+function ClockIcon({ color, size = 12 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 12 12">
+      <Circle cx={6} cy={6} r={4.9} stroke={color} strokeWidth={1.6} fill="none" />
+      <Path d="M6 3.3V6l1.9 1.2" stroke={color} strokeWidth={1.6} strokeLinecap="round" fill="none" />
+    </Svg>
+  );
+}
+
+// Tetiklemeli kartların üst etiketi: K3 zam (kırmızı tonlu, ok) ve K4
+// deneme bitiyor (safran tonlu, saat). Sağda zaman bilgisi.
+function QuestionBadge({ tone, label, detail }) {
+  const { colors, isDark, brand } = useTheme();
+  const isPrice = tone === "price";
+  const background = isPrice ? "rgba(200,49,42,0.14)" : "rgba(255,197,61,0.26)";
+  const foreground = isPrice ? colors.danger : isDark ? brand.safran : "#7A4E00";
+  const Icon = isPrice ? ArrowUpIcon : ClockIcon;
+
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 5,
+          backgroundColor: background,
+          borderRadius: 999,
+          paddingHorizontal: 10,
+          paddingVertical: 5,
+        }}
+      >
+        <Icon color={foreground} />
+        <Text style={{ fontSize: 12.5, fontWeight: "800", color: foreground }}>{label}</Text>
+      </View>
+      {detail ? (
+        <Text style={{ fontSize: 13, fontWeight: isPrice ? "600" : "800", color: isPrice ? colors.text2 : colors.text }}>
+          {detail}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
 
 function pad(n) {
   return String(n).padStart(2, "0");
@@ -72,9 +126,11 @@ export function ProgressDots({ index, count }) {
 }
 
 // Kartın üstündeki servis şeridi: logo, ad + plan, fiyat; sağda ilerleme.
+// Zamda eski fiyat üstü çizili, yeni fiyat kırmızı.
 function ServiceStrip({ params, index, count }) {
   const { colors, spacing } = useTheme();
   const price = formatSubscriptionPrice(params);
+  const isPriceChange = params.old_price != null && params.new_price != null;
 
   return (
     <View
@@ -100,9 +156,21 @@ function ServiceStrip({ params, index, count }) {
           {params.app_name}
           {params.plan_name ? ` ${params.plan_name}` : ""}
         </Text>
-        <Text style={{ fontSize: 13, color: colors.text2 }} numberOfLines={1}>
-          {price.primary} {periodLabel(params)}
-        </Text>
+        {isPriceChange ? (
+          <Text style={{ fontSize: 13, color: colors.text2 }} numberOfLines={1}>
+            <Text style={{ textDecorationLine: "line-through" }}>
+              {formatAmount(params.old_price, params.price_currency)}
+            </Text>{" "}
+            <Text style={{ fontWeight: "800", color: colors.danger }}>
+              {formatAmount(params.new_price, params.price_currency)}
+            </Text>{" "}
+            {periodLabel(params)}
+          </Text>
+        ) : (
+          <Text style={{ fontSize: 13, color: colors.text2 }} numberOfLines={1}>
+            {price.primary} {periodLabel(params)}
+          </Text>
+        )}
       </View>
       <ProgressDots index={index} count={count} />
     </View>
@@ -265,10 +333,13 @@ function BillingEntry({ params, onSubmit, busy }) {
 }
 
 // Tek bir Kıvırık sorusu (K2 kartı). onAnswer({ answer, value }),
-// onSkip ("Geç"), onNever ("Bunu bir daha sorma"). Kullanıcı başına
+// onSkip ("Geç"), onNever ("Bunu bir daha sorma"), onDismiss(mode)
+// (dismiss'li seçenekler, ör. "Yarın tekrar hatırlat"). Kullanıcı başına
 // sorularda şerit yerine yalnızca ilerleme noktaları görünür.
 // initialInput: ilgili seçeneğin giriş alanıyla açılır (ör. detaydan
 // "Değiştir"). hideFooter: detaydan tek alan düzenlerken.
+// override: aynı kartta takip sorusu ({ text, note, options }); etiket ve
+// alt bilgi gizlenir.
 export function KivirikQuestionCard({
   question,
   index = 0,
@@ -277,11 +348,14 @@ export function KivirikQuestionCard({
   onAnswer,
   onSkip,
   onNever,
+  onDismiss,
   initialInput = null,
   hideFooter = false,
+  override = null,
 }) {
   const { colors, isDark, spacing } = useTheme();
-  const config = KIVIRIK_QUESTIONS[question.key];
+  const baseConfig = KIVIRIK_QUESTIONS[question.key];
+  const config = override ?? baseConfig;
   const params = question.params ?? {};
   const isSubscription = Boolean(question.user_subscription_id);
   const options = config.options(params);
@@ -289,10 +363,16 @@ export function KivirikQuestionCard({
     initialInput ? options.find((option) => option.input === initialInput) ?? null : null
   );
   const note = config.note?.(params);
+  const badge = override ? null : baseConfig.badge?.(params);
+  const mood = baseConfig.mood ?? (THINKING_KEYS.has(question.key) ? "dusunceli" : "normal");
 
   function pick(option) {
     if (option.input) {
       setInputOption(option);
+      return;
+    }
+    if (option.dismiss) {
+      onDismiss?.(option.dismiss);
       return;
     }
     onAnswer({ answer: option.answer, value: option.value });
@@ -304,6 +384,7 @@ export function KivirikQuestionCard({
 
   return (
     <View style={{ flex: 1, gap: 18 }}>
+      {badge ? <QuestionBadge {...badge} /> : null}
       {isSubscription ? (
         <ServiceStrip params={params} index={index} count={count} />
       ) : count > 1 ? (
@@ -313,7 +394,7 @@ export function KivirikQuestionCard({
       ) : null}
 
       <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 10 }}>
-        <KivirikHead size={64} mood={THINKING_KEYS.has(question.key) ? "dusunceli" : "normal"} />
+        <KivirikHead size={64} mood={override ? "dusunceli" : mood} />
         <View
           style={{
             flex: 1,
@@ -384,7 +465,7 @@ export function KivirikQuestionCard({
         )}
       </ScrollView>
 
-      {!hideFooter ? (
+      {!hideFooter && !override ? (
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
           <Pressable
             onPress={onSkip}
