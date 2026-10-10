@@ -7,12 +7,23 @@
 // period: "once" | "monthly" | "quarterly" | "event"
 // priority: 1 = ilk sorulur. Aynı öncelikte pahalı abonelik önce.
 //
-// when(ctx) -> boolean
+// when(ctx) -> boolean (tek seferlik sorular)
 //   abonelik sorularında ctx = { sub, settings, now, todayIso }
 //   kullanıcı sorularında ctx = { subs, settings, now, todayIso }
+// pendingPeriod(ctx) -> dönem anahtarı | null (periyodik/tetiklemeli
+//   sorular; o dönem cevaplanmadıysa sorulur). periodPattern: istemcinin
+//   gönderdiği dönemin biçimi.
+// target: "cancelled" ise soru iptal edilmiş aboneliklerde sorulur
+//   (varsayılan: iptal edilmemişler).
 // answers: geçerli cevap anahtarları; value gerektirenler valueType ile.
 
+const { addDaysIso, firstBillingDayAfter, istanbulDay } = require("./dates");
+
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+// cancel_verify, iptalden sonraki ilk ödeme gününden bu kadar gün sonrasına
+// kadar sorulur; uygulama aylarca açılmadıysa "bu ay" sorusu anlamsızlaşır.
+const CANCEL_VERIFY_WINDOW_DAYS = 45;
 
 const USAGE_FREQUENCIES = ["Her gün", "Haftada birkaç kez", "Ayda birkaç kez", "Neredeyse hiç"];
 const PAYMENT_CHANNELS = ["app_store", "google_play", "web_card", "operator", "someone_else"];
@@ -24,7 +35,30 @@ function hasBillingDay(sub) {
 
 const isSomeoneElse = (sub) => sub.payment_channel === "someone_else";
 
+// İptalden sonraki ilk eski ödeme günü geçtiyse o günün ayı ('YYYY-MM').
+function cancelVerifyPeriod({ sub, todayIso }) {
+  if (!sub.cancelled_at || isSomeoneElse(sub) || !hasBillingDay(sub)) return null;
+  const due = firstBillingDayAfter(sub, istanbulDay(new Date(sub.cancelled_at)));
+  if (!due || todayIso <= due || todayIso > addDaysIso(due, CANCEL_VERIFY_WINDOW_DAYS)) {
+    return null;
+  }
+  return due.slice(0, 7);
+}
+
 const QUESTIONS = [
+  {
+    key: "cancel_verify",
+    scope: "subscription",
+    target: "cancelled",
+    period: "event",
+    priority: 1,
+    pendingPeriod: cancelVerifyPeriod,
+    periodPattern: /^\d{4}-\d{2}$/,
+    params: ({ sub }) => ({
+      charge_date: firstBillingDayAfter(sub, istanbulDay(new Date(sub.cancelled_at))),
+    }),
+    answers: { no: null, yes: null },
+  },
   {
     key: "billing_day",
     scope: "subscription",
@@ -128,4 +162,11 @@ const QUESTIONS = [
 
 const QUESTIONS_BY_KEY = new Map(QUESTIONS.map((question) => [question.key, question]));
 
-module.exports = { QUESTIONS, QUESTIONS_BY_KEY, USAGE_FREQUENCIES, PAYMENT_CHANNELS, hasBillingDay };
+module.exports = {
+  QUESTIONS,
+  QUESTIONS_BY_KEY,
+  USAGE_FREQUENCIES,
+  PAYMENT_CHANNELS,
+  cancelVerifyPeriod,
+  hasBillingDay,
+};

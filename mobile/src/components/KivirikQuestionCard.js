@@ -14,7 +14,13 @@ const BUBBLE_NOTE = "#CFCBD6";
 const SAFRAN = "#FFC53D";
 
 // Bu sorularda Kıvırık düşünceli bakar (fiyat, süre gibi kontrol soruları).
-const THINKING_KEYS = new Set(["price_confirm", "planned_end", "monthly_budget", "is_trial"]);
+const THINKING_KEYS = new Set([
+  "price_confirm",
+  "planned_end",
+  "monthly_budget",
+  "is_trial",
+  "cancel_verify",
+]);
 
 function pad(n) {
   return String(n).padStart(2, "0");

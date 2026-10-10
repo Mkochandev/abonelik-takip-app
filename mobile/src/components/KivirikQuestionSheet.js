@@ -1,3 +1,4 @@
+import { useNavigation } from "@react-navigation/native";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -29,6 +30,14 @@ export const STORE_SUBSCRIPTIONS_URL =
     ? "https://play.google.com/store/account/subscriptions"
     : "https://apps.apple.com/account/subscriptions";
 
+// Bu cevaplar paneli kapatıp başka ekrana götürür (sonraki soruya geçmez).
+function navigationFor(key, answer, params) {
+  if (key === "cancel_verify" && answer === "yes") {
+    return ["RefundSteps", { subscription: params }];
+  }
+  return null;
+}
+
 // Cevabın uygulama tarafındaki ek etkileri (veri sunucuda zaten güncellendi).
 function afterAnswer(key, answer) {
   if (key === "reminder_days_before" || key === "monthly_budget" || key === "is_student") {
@@ -42,6 +51,7 @@ function afterAnswer(key, answer) {
 function SheetBody({ token, editQuestion, onClose }) {
   const { colors, isDark, spacing, radius } = useTheme();
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const isEdit = Boolean(editQuestion);
   const [phase, setPhase] = useState(isEdit ? "question" : "loading");
   const [questions, setQuestions] = useState(isEdit ? [editQuestion.question] : []);
@@ -57,9 +67,10 @@ function SheetBody({ token, editQuestion, onClose }) {
       .getKivirikQuestions(token)
       .then((data) => {
         if (!active) return;
-        setKivirikTotal(data.total);
+        setKivirikTotal(data.total, data.trigger);
         setQuestions(data.questions);
-        setPhase(data.questions.length > 0 ? "intro" : "empty");
+        // Tetiklemeli soru (iptal kontrolü gibi) varsa giriş atlanır.
+        setPhase(data.questions.length === 0 ? "empty" : data.trigger ? "question" : "intro");
       })
       .catch((err) => active && (setPhase("error"), Alert.alert("Hata", err.message)));
     return () => {
@@ -96,13 +107,13 @@ function SheetBody({ token, editQuestion, onClose }) {
     }
   }
 
-  async function run(request) {
+  async function run(request, onSuccess = next) {
     setBusy(true);
     try {
       const result = await request();
-      setKivirikTotal(result.total);
+      setKivirikTotal(result.total, result.trigger);
       setChanged(true);
-      next();
+      onSuccess();
     } catch (err) {
       Alert.alert("Kaydedilemedi", err.message);
     } finally {
@@ -113,6 +124,13 @@ function SheetBody({ token, editQuestion, onClose }) {
   const question = questions[index];
 
   function answer({ answer: value, value: extra }) {
+    const target = navigationFor(question.key, value, question.params);
+    const onSuccess = target
+      ? () => {
+          onClose({ changed: true });
+          navigation.navigate(...target);
+        }
+      : next;
     run(async () => {
       const result = await api.answerKivirikQuestion(token, {
         key: question.key,
@@ -123,7 +141,7 @@ function SheetBody({ token, editQuestion, onClose }) {
       });
       afterAnswer(question.key, value);
       return result;
-    });
+    }, onSuccess);
   }
 
   function dismiss(mode) {

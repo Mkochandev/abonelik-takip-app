@@ -3,6 +3,7 @@
 // src/kivirik/questions.js'te.
 
 const db = require("../config/db");
+const { istanbulDay } = require("../kivirik/dates");
 const { QUESTIONS, QUESTIONS_BY_KEY } = require("../kivirik/questions");
 const { getUsdToTryRate } = require("./exchangeRate");
 const {
@@ -14,7 +15,6 @@ const {
 
 const MAX_QUESTIONS = 3;
 const LATER_DAYS = 7;
-const TIME_ZONE = "Europe/Istanbul";
 const MAX_AMOUNT = 1_000_000;
 
 // Kullanıcının istemciden değiştirebildiği ayar kolonları (whitelist).
@@ -30,9 +30,7 @@ class KivirikError extends Error {
 }
 
 // Europe/Istanbul'a göre bugünün tarihi: 'YYYY-MM-DD'.
-function istanbulToday(now = new Date()) {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE }).format(now);
-}
+const istanbulToday = istanbulDay;
 
 async function getSettings(userId, client = db) {
   const { rows } = await client.query(
@@ -66,14 +64,15 @@ async function updateSettings(userId, values, client = db) {
   return getSettings(userId, client);
 }
 
-// Sorulara aday abonelikler: iptal edilmemiş ve uygulamanın yönetmediği
-// (erişte Premium'un fiyatı, günü ve kanalı zaten bilinir).
+// Sorulara aday abonelikler: uygulamanın yönetmediği (erişte Premium'un
+// fiyatı, günü ve kanalı zaten bilinir). İptal edilenler yalnızca
+// target: "cancelled" sorularında kullanılır.
 async function loadSubscriptions(userId, client = db) {
   const { rows } = await client.query(
     `select ${SUBSCRIPTION_WITH_CATALOG_COLUMNS}
      from user_subscriptions us
      join subscriptions_catalog sc on sc.id = us.catalog_id
-     where us.user_id = $1 and us.cancelled_at is null and sc.managed_by is null`,
+     where us.user_id = $1 and sc.managed_by is null`,
     [userId]
   );
   const usdToTryRate = await getUsdToTryRate();
@@ -100,13 +99,24 @@ function subscriptionParams(sub) {
     billing_month: sub.billing_month,
     usage_frequency: sub.usage_frequency,
     payment_channel: sub.payment_channel,
+    cancel_url: sub.cancel_url,
   };
 }
 
+// Sorunun bu bağlamda bekleyen dönemi; sorulmayacaksa null.
+function pendingPeriodFor(question, ctx) {
+  if (question.period === "once") {
+    return question.when(ctx) ? "once" : null;
+  }
+  return question.pendingPeriod(ctx);
+}
+
 // Bekleyen sorular: öncelik sırasıyla, aynı öncelikte pahalı abonelik önce.
+// Tetiklemeli (event) sorular event: true ile işaretlenir; trigger, en önde
+// bekleyen soru tetiklemeliyse odur (ana sayfa balonu onu söyler).
 async function getPendingQuestions(userId) {
   const now = new Date();
-  const [settings, subs, answersResult, dismissalsResult] = await Promise.all([
+  const [settings, allSubs, answersResult, dismissalsResult] = await Promise.all([
     getSettings(userId),
     loadSubscriptions(userId),
     db.query(
@@ -127,15 +137,17 @@ async function getPendingQuestions(userId) {
     dismissalsResult.rows.map((row) => stateKey(row.question_key, row.user_subscription_id, "-"))
   );
   const todayIso = istanbulToday(now);
+  const subs = allSubs.filter((sub) => !sub.cancelled_at);
+  const cancelledSubs = allSubs.filter((sub) => sub.cancelled_at);
   const pending = [];
 
   for (const question of QUESTIONS) {
-    const period = question.period === "once" ? "once" : null;
-    if (!period) continue; // Periyodik/tetiklemeli sorular sonraki fazlarda.
+    const event = question.period === "event";
 
     if (question.scope === "user") {
+      const period = pendingPeriodFor(question, { subs, settings, now: now.getTime(), todayIso });
       if (
-        question.when({ subs, settings, now: now.getTime(), todayIso }) &&
+        period &&
         !answered.has(stateKey(question.key, null, period)) &&
         !dismissed.has(stateKey(question.key, null, "-"))
       ) {
@@ -143,6 +155,7 @@ async function getPendingQuestions(userId) {
           key: question.key,
           user_subscription_id: null,
           period,
+          event,
           priority: question.priority,
           sortPrice: -1,
           params: question.key === "monthly_budget" || question.key === "store_check"
@@ -153,9 +166,11 @@ async function getPendingQuestions(userId) {
       continue;
     }
 
-    for (const sub of subs) {
+    for (const sub of question.target === "cancelled" ? cancelledSubs : subs) {
+      const ctx = { sub, settings, now: now.getTime(), todayIso };
+      const period = pendingPeriodFor(question, ctx);
       if (
-        question.when({ sub, settings, now: now.getTime(), todayIso }) &&
+        period &&
         !answered.has(stateKey(question.key, sub.id, period)) &&
         !dismissed.has(stateKey(question.key, sub.id, "-"))
       ) {
@@ -163,9 +178,10 @@ async function getPendingQuestions(userId) {
           key: question.key,
           user_subscription_id: sub.id,
           period,
+          event,
           priority: question.priority,
           sortPrice: monthlyPriceTry(sub),
-          params: subscriptionParams(sub),
+          params: { ...subscriptionParams(sub), ...question.params?.(ctx) },
         });
       }
     }
@@ -173,11 +189,14 @@ async function getPendingQuestions(userId) {
 
   pending.sort((a, b) => a.priority - b.priority || b.sortPrice - a.sortPrice);
 
+  const questions = pending
+    .slice(0, MAX_QUESTIONS)
+    .map(({ sortPrice, priority, ...question }) => question);
+
   return {
     total: pending.length,
-    questions: pending
-      .slice(0, MAX_QUESTIONS)
-      .map(({ sortPrice, priority, ...question }) => question),
+    trigger: questions[0]?.event ? questions[0] : null,
+    questions,
   };
 }
 
@@ -300,6 +319,9 @@ async function applyEffect(client, { userId, question, answer, value, sub }) {
     }
     case "store_check":
       return null;
+    case "cancel_verify":
+      // "Evet" iade adımlarını açar (istemci); kayıt yalnızca cevaptır.
+      return null;
     default:
       throw new KivirikError("Bilinmeyen soru");
   }
@@ -319,8 +341,8 @@ async function answerQuestion(userId, body, withTransaction) {
   }
 
   const period = question.period === "once" ? "once" : String(body.period || "");
-  if (!period) {
-    throw new KivirikError("period zorunludur");
+  if (!period || (question.periodPattern && !question.periodPattern.test(period))) {
+    throw new KivirikError("Geçersiz period");
   }
 
   const subscriptionId = question.scope === "subscription" ? body.user_subscription_id : null;

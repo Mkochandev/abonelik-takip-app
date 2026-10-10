@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -17,9 +17,10 @@ import {
   PillButton,
   ServiceLogo,
 } from "../components";
+import { KIVIRIK_QUESTIONS } from "../config/kivirikQuestions";
 import { useAuth } from "../context/AuthContext";
 import { subscribeEristeChanges } from "../services/eristeSync";
-import { refreshKivirikCount, useKivirikCount } from "../services/kivirik";
+import { refreshKivirikCount, useKivirikCount, useKivirikTrigger } from "../services/kivirik";
 import { maybeAskForReminders, rescheduleAll } from "../services/reminders";
 import { loadSubscriptions } from "../services/subscriptionsSource";
 import { getUserSettings } from "../services/userSettings";
@@ -89,6 +90,9 @@ export default function HomeScreen({ navigation }) {
   // Kıvırık soru paneli ve rozetteki bekleyen soru sayısı (yalnızca hesapta).
   const [questionsOpen, setQuestionsOpen] = useState(false);
   const pendingCount = useKivirikCount();
+  const trigger = useKivirikTrigger();
+  // "Geri al" isteği süren iptal edilmiş kayıt.
+  const [restoringId, setRestoringId] = useState(null);
   const [settings, setSettings] = useState(null);
   const scrollRef = useRef(null);
   const subsSectionY = useRef(0);
@@ -153,13 +157,16 @@ export default function HomeScreen({ navigation }) {
 
   // Yıllık planlar aylık toplama 12'de biri olarak girer. Başkasının ödediği,
   // iptal edilmiş ve Premium'u bitmiş erişte kaydı toplamlara girmez.
+  // İptal edilenler listenin sonunda ayrı bölümde durur.
   const paidSubscriptions = subscriptions.filter(isCountedInTotals);
-  const othersPay = subscriptions.filter((sub) => sub.payment_channel === "someone_else");
-  const listedSubscriptions = subscriptions.filter((sub) => sub.payment_channel !== "someone_else");
+  const activeSubscriptions = subscriptions.filter((sub) => !sub.cancelled_at);
+  const cancelledSubscriptions = subscriptions.filter((sub) => sub.cancelled_at);
+  const othersPay = activeSubscriptions.filter((sub) => sub.payment_channel === "someone_else");
+  const listedSubscriptions = activeSubscriptions.filter((sub) => sub.payment_channel !== "someone_else");
   const totalTry = paidSubscriptions.reduce((sum, sub) => sum + monthlyPriceTry(sub), 0);
-  const hasUsd = subscriptions.some((sub) => sub.currency === "USD");
-  // erişte Premium kaydı ücretsiz plan limitine sayılmaz.
-  const limitedCount = subscriptions.filter((sub) => !sub.managed_by).length;
+  const hasUsd = paidSubscriptions.some((sub) => sub.currency === "USD");
+  // erişte Premium kaydı ve iptal edilenler ücretsiz plan limitine sayılmaz.
+  const limitedCount = activeSubscriptions.filter((sub) => !sub.managed_by).length;
 
   const upcomingPayments = getUpcomingPayments(subscriptions).slice(0, 3);
   // Eksik ödeme günü balonu yalnızca misafirde; hesapta bunu Kıvırık sorar.
@@ -179,6 +186,8 @@ export default function HomeScreen({ navigation }) {
   const monthlyBudget = settings?.monthly_budget ?? null;
   const overBudget = monthlyBudget != null && monthlyBudget > 0 && totalTry > monthlyBudget;
   const hasQuestions = isAuthenticated && pendingCount > 0;
+  // Tetiklemeli soru (iptal kontrolü gibi) varsa balon doğrudan onu söyler.
+  const triggerText = hasQuestions && trigger ? KIVIRIK_QUESTIONS[trigger.key]?.bubble?.(trigger.params) : null;
 
   // Balon önceliği: bekleyen sorular, bütçe aşımı, olağan mesaj.
   const kivirikMessage =
@@ -214,6 +223,55 @@ export default function HomeScreen({ navigation }) {
         .then(setSettings)
         .catch(() => {});
     }
+  }
+
+  async function restoreSubscription(item) {
+    setRestoringId(item.id);
+    try {
+      await api.restoreUserSubscription(token, item.id);
+      setReloadKey((key) => key + 1);
+      refreshKivirikCount(token, { force: true });
+    } catch (err) {
+      if (err.code === "LIMIT_REACHED") {
+        navigation.navigate("Paywall");
+      } else {
+        Alert.alert("Kaydedilemedi", err.message);
+      }
+    } finally {
+      setRestoringId(null);
+    }
+  }
+
+  function renderCancelledRow(item) {
+    return (
+      <GroupedListRow
+        key={item.id}
+        onPress={() => navigation.navigate("SubscriptionDetail", { subscription: item })}
+      >
+        <View style={{ opacity: 0.55 }}>
+          <ServiceLogo
+            domain={item.domain}
+            logoUrl={item.logo_url}
+            name={item.app_name}
+            category={item.category}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontWeight: "600" }} numberOfLines={1}>
+            {item.app_name}
+            {item.plan_name ? ` ${item.plan_name}` : ""}
+          </Text>
+          <Text style={{ color: colors.text2, fontSize: 13, marginTop: 1 }}>
+            İptal edildi · {new Date(item.cancelled_at).toLocaleDateString("tr-TR")}
+          </Text>
+        </View>
+        {restoringId === item.id ? (
+          <ActivityIndicator color={colors.text2} />
+        ) : (
+          <Chip label="Geri al" onPress={() => restoreSubscription(item)} />
+        )}
+      </GroupedListRow>
+    );
   }
 
   function goToCatalog() {
@@ -386,7 +444,8 @@ export default function HomeScreen({ navigation }) {
         >
           <KivirikBubble tail="right">
             <Text style={{ color: "#F5F3F7", fontSize: 15, fontWeight: "600", lineHeight: 21 }}>
-              Dur, sana soracaklarım var! {pendingCount > 9 ? "9+" : pendingCount} kısa soru.
+              {triggerText ??
+                `Dur, sana soracaklarım var! ${pendingCount > 9 ? "9+" : pendingCount} kısa soru.`}
             </Text>
             <Text style={{ color: brand.safran, fontSize: 13, fontWeight: "700", marginTop: 4 }}>
               Cevapla
@@ -651,6 +710,17 @@ export default function HomeScreen({ navigation }) {
                   Toplamlara ve hatırlatmalara katılmaz.
                 </Text>
                 <GroupedList>{othersPay.map(renderSubscriptionRow)}</GroupedList>
+              </View>
+            ) : null}
+            {cancelledSubscriptions.length > 0 ? (
+              <View>
+                <Text style={{ fontFamily: fontFamily.bold, fontSize: 17, color: colors.text }}>
+                  İptal edilenler
+                </Text>
+                <Text style={{ color: colors.text2, fontSize: 13, marginTop: 2, marginBottom: spacing.sm }}>
+                  Toplamlara, hatırlatmalara ve abonelik sınırına katılmaz.
+                </Text>
+                <GroupedList>{cancelledSubscriptions.map(renderCancelledRow)}</GroupedList>
               </View>
             ) : null}
           </View>

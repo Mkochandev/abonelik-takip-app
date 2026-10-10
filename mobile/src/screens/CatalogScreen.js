@@ -93,9 +93,13 @@ export default function CatalogScreen({ navigation }) {
   async function fetchMySubscriptions() {
     try {
       const data = await api.getUserSubscriptions(token);
+      // İptal edilenler seçili görünmez; tekrar eklenince sunucu aynı kaydı
+      // yeniden etkinleştirir.
       const next = {};
       for (const sub of data.subscriptions) {
-        next[sub.catalog_id] = sub.id;
+        if (!sub.cancelled_at) {
+          next[sub.catalog_id] = sub.id;
+        }
       }
       setSelections(next);
     } catch (err) {

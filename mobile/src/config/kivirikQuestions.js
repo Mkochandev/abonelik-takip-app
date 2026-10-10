@@ -18,8 +18,18 @@ import {
 //   input: "amount" | "date" | "text" — seçilince seçeneklerin yerine giriş
 //   alanı + Kaydet çıkar; cevap { answer, value } olarak gönderilir.
 // picker: "billing" — kart gün seçiciyi gösterir (answer = "set").
+// bubble: tetiklemeli sorularda ana sayfa balonunun metni (servis adı
+// eksiz, cümlenin sonunda).
 
 export const KIVIRIK_QUESTIONS = {
+  cancel_verify: {
+    text: () => "Bu aboneliği iptal etmiştin. Bu ay kartından çekim oldu mu?",
+    bubble: (p) => `İptal ettiğin bir abonelik için sorum var: ${p.app_name}. Bu ay kartından çekim oldu mu?`,
+    options: () => [
+      { answer: "no", label: "Hayır" },
+      { answer: "yes", label: "Evet", hint: "Ne yapabileceğini adım adım göstereyim" },
+    ],
+  },
   billing_day: {
     text: (p) =>
       p.billing_cycle === "yearly" ? "Para yılın hangi günü çekiliyor?" : "Para ayın kaçında çekiliyor?",

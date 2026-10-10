@@ -195,6 +195,16 @@ export function removeUserSubscription(token, id) {
   return request(`/user/subscriptions/${id}`, { method: "DELETE", token });
 }
 
+// "İptal ettim": kayıt kalır, toplamlardan ve sınırdan düşer. → { id, cancelled_at }
+export function cancelUserSubscription(token, id) {
+  return request(`/user/subscriptions/${id}/cancel`, { method: "POST", token });
+}
+
+// "Geri al": iptal işareti kalkar (ücretsiz planda sınır doluysa LIMIT_REACHED).
+export function restoreUserSubscription(token, id) {
+  return request(`/user/subscriptions/${id}/restore`, { method: "POST", token });
+}
+
 export function syncPlan(token) {
   return request("/user/plan/sync", { method: "POST", token });
 }
@@ -208,17 +218,18 @@ export function syncEristePremium(token, body) {
 
 // --- Kıvırık soruları ve kullanıcı ayarları -------------------------------
 
-// Yanıt: { total, questions: [{ key, user_subscription_id, period, params }] }
+// Yanıt: { total, trigger, questions: [{ key, user_subscription_id, period, event, params }] }
+// trigger: en öndeki soru tetiklemeliyse (ör. cancel_verify) o soru, yoksa null.
 export function getKivirikQuestions(token) {
   return request("/kivirik/questions", { token });
 }
 
-// body: { key, user_subscription_id, period, answer, value } → { ok, total }
+// body: { key, user_subscription_id, period, answer, value } → { ok, total, trigger }
 export function answerKivirikQuestion(token, body) {
   return request("/kivirik/answers", { method: "POST", token, body });
 }
 
-// body: { key, user_subscription_id, mode: "later" | "never" } → { ok, total }
+// body: { key, user_subscription_id, mode: "later" | "never" } → { ok, total, trigger }
 export function dismissKivirikQuestion(token, body) {
   return request("/kivirik/dismiss", { method: "POST", token, body });
 }

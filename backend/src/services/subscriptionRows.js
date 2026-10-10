@@ -10,7 +10,8 @@ const SUBSCRIPTION_WITH_CATALOG_COLUMNS = `us.id, us.started_at, us.reason, us.u
   sc.plan_name, coalesce(us.custom_price, sc.current_price) as current_price,
   coalesce(us.custom_currency, sc.currency) as currency, us.custom_price,
   sc.current_price as catalog_price, sc.currency as catalog_currency, sc.billing_cycle,
-  sc.category, sc.domain, sc.logo_url, sc.managed_by, us.payment_channel, us.share_count,
+  sc.category, sc.domain, sc.logo_url, sc.cancel_url, sc.managed_by, us.payment_channel,
+  us.share_count,
   us.is_trial, to_char(us.trial_ends_at, 'YYYY-MM-DD') as trial_ends_at,
   to_char(us.planned_end_at, 'YYYY-MM-DD') as planned_end_at, us.cancelled_at`;
 

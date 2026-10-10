@@ -74,6 +74,8 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [removing, setRemoving] = useState(false);
+  // "İptal ettim" / "Geri al" isteği sürerken.
+  const [statusBusy, setStatusBusy] = useState(false);
   // Tek alan düzenleme (Kıvırık kartı) ve ortak iptal rehberi.
   const [editing, setEditing] = useState(null);
   const [cancelGuideOpen, setCancelGuideOpen] = useState(false);
@@ -82,6 +84,9 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
   // Premium bitince kayıt kalır ama "aktif değil" görünür.
   const isManaged = Boolean(subscription.managed_by);
   const managedInactive = isManagedInactive(subscription);
+  // "İptal ettim" yalnızca hesapta ve uygulamanın yönetmediği kayıtlarda.
+  const canMarkCancelled = !isGuest && !isManaged;
+  const isCancelled = Boolean(subscription.cancelled_at);
   const cancelUrl = isManaged
     ? catalogItem?.cancel_url ?? APP_STORE_SUBSCRIPTIONS_URL
     : catalogItem?.cancel_url;
@@ -178,15 +183,50 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
     setSubscription((current) => ({ ...current, ...updates }));
   }
 
-  function handleRemovePress() {
+  // İptal işareti değişince toplamlar, hatırlatmalar ve Kıvırık soruları
+  // yeniden hesaplanır.
+  async function setCancelled(cancelled) {
+    setStatusBusy(true);
+    try {
+      const result = cancelled
+        ? await api.cancelUserSubscription(token, subscription.id)
+        : await api.restoreUserSubscription(token, subscription.id);
+      setSubscription((current) => ({ ...current, cancelled_at: result.cancelled_at }));
+      rescheduleAll();
+      refreshKivirikCount(token, { force: true });
+    } catch (err) {
+      if (err.code === "LIMIT_REACHED") {
+        navigation.navigate("Paywall");
+      } else {
+        Alert.alert("Kaydedilemedi", err.message);
+      }
+    } finally {
+      setStatusBusy(false);
+    }
+  }
+
+  function handleCancelledPress() {
     Alert.alert(
-      "Aboneliği kaldır",
-      isManaged
-        ? `${subscription.app_name} takip listenden kaldırılsın mı? Premium aboneliğin iptal olmaz ve bu kayıt listene tekrar eklenmez.`
-        : `${subscription.app_name} takip listenden kaldırılsın mı? Bu işlem servisteki aboneliğini iptal etmez.`,
+      "İptal ettin mi?",
+      "Toplamlardan, hatırlatmalardan ve abonelik sınırından çıkar; listende \"İptal edilenler\" altında kalır. Ödeme gününden sonra çekim olup olmadığını sorarım.",
       [
         { text: "Vazgeç", style: "cancel" },
-        { text: "Kaldır", style: "destructive", onPress: removeSubscription },
+        { text: "İptal ettim", onPress: () => setCancelled(true) },
+      ]
+    );
+  }
+
+  function handleRemovePress() {
+    Alert.alert(
+      "Aboneliği sil",
+      isManaged
+        ? `${subscription.app_name} listenden silinsin mi? Premium aboneliğin iptal olmaz ve bu kayıt listene tekrar eklenmez.`
+        : canMarkCancelled && !isCancelled
+          ? `${subscription.app_name} listenden silinsin mi? Yanlışlıkla eklediysen sil. Servisten iptal ettiysen "İptal ettim"i kullan.`
+          : `${subscription.app_name} listenden silinsin mi? Bu işlem servisteki aboneliğini iptal etmez.`,
+      [
+        { text: "Vazgeç", style: "cancel" },
+        { text: "Sil", style: "destructive", onPress: removeSubscription },
       ]
     );
   }
@@ -268,6 +308,22 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
         </View>
         {price.secondary ? (
           <Text style={{ color: colors.text2, marginTop: 2 }}>{price.secondary}</Text>
+        ) : null}
+        {isCancelled ? (
+          <View
+            style={{
+              alignSelf: "flex-start",
+              backgroundColor: colors.field,
+              borderRadius: 999,
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              marginTop: spacing.sm,
+            }}
+          >
+            <Text style={{ fontSize: 12.5, fontWeight: "700", color: colors.text2 }}>
+              İptal edildi · {new Date(subscription.cancelled_at).toLocaleDateString("tr-TR")}
+            </Text>
+          </View>
         ) : null}
         {managedInactive ? (
           <View
@@ -397,7 +453,20 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
         </Card>
       ) : null}
 
-      {(isManaged ? cancelUrl && !managedInactive : true) ? (
+      {isCancelled ? (
+        <View>
+          <PillButton
+            title="Geri al"
+            variant="outline"
+            loading={statusBusy}
+            disabled={statusBusy}
+            onPress={() => setCancelled(false)}
+          />
+          <Text style={{ color: colors.text2, fontSize: 12, textAlign: "center", marginTop: spacing.sm }}>
+            Toplamlara ve hatırlatmalara katılmıyor
+          </Text>
+        </View>
+      ) : (isManaged ? cancelUrl && !managedInactive : true) ? (
         <View>
           <PillButton
             title={isManaged ? "İptal et" : "Aboneliği iptal et"}
@@ -409,6 +478,16 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
               ? "App Store abonelik yönetimi açılır"
               : "Nereden ödediğine göre doğru yere götürürüm"}
           </Text>
+          {canMarkCancelled ? (
+            <PillButton
+              title="İptal ettim"
+              variant="outline"
+              loading={statusBusy}
+              disabled={statusBusy}
+              onPress={handleCancelledPress}
+              style={{ marginTop: spacing.md }}
+            />
+          ) : null}
         </View>
       ) : null}
 
@@ -435,7 +514,7 @@ export default function SubscriptionDetailScreen({ navigation, route }) {
               textDecorationLine: "underline",
             }}
           >
-            Takip listesinden kaldır
+            Sil
           </Text>
         )}
       </Pressable>

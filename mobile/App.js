@@ -24,6 +24,7 @@ import MainTabs from './src/navigation/MainTabs';
 import GuestLimitScreen from './src/screens/GuestLimitScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import PaywallScreen from './src/screens/PaywallScreen';
+import RefundStepsScreen from './src/screens/RefundStepsScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import SubscriptionDetailScreen from './src/screens/SubscriptionDetailScreen';
 import OnboardingNavigator from './src/screens/onboarding/OnboardingNavigator';
@@ -126,6 +127,7 @@ function RootNavigator() {
         options={{ animation: "fade", gestureEnabled: false }}
       />
       <Stack.Screen name="SubscriptionDetail" component={SubscriptionDetailScreen} />
+      <Stack.Screen name="RefundSteps" component={RefundStepsScreen} />
       <Stack.Screen name="Login" component={LoginScreen} options={{ presentation: "modal" }} />
       <Stack.Screen name="Register" component={RegisterScreen} options={{ presentation: "modal" }} />
       <Stack.Screen name="Paywall" component={PaywallScreen} options={{ presentation: "modal" }} />

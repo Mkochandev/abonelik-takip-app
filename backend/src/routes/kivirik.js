@@ -27,8 +27,8 @@ function handleError(res, error) {
 }
 
 // GET /api/kivirik/questions — bekleyen soruları anlık hesaplar.
-// Yanıt: { total, questions: [{ key, user_subscription_id, period, params }] }
-// (en fazla 3 soru, öncelik sırasıyla).
+// Yanıt: { total, trigger, questions: [{ key, user_subscription_id, period, event, params }] }
+// (en fazla 3 soru, öncelik sırasıyla; trigger: en öndeki soru tetiklemeliyse o).
 router.get("/questions", async (req, res) => {
   try {
     res.json(await getPendingQuestions(req.user.id));
@@ -39,12 +39,12 @@ router.get("/questions", async (req, res) => {
 
 // POST /api/kivirik/answers — { key, user_subscription_id, period, answer, value }
 // İlgili alanı/ayarı günceller ve cevabı kaydeder (tek transaction).
-// Yanıt: güncel bekleyen soru sayısı.
+// Yanıt: güncel bekleyen soru sayısı ve tetiklemeli soru.
 router.post("/answers", async (req, res) => {
   try {
     await answerQuestion(req.user.id, req.body, withTransaction);
-    const { total } = await getPendingQuestions(req.user.id);
-    res.json({ ok: true, total });
+    const { total, trigger } = await getPendingQuestions(req.user.id);
+    res.json({ ok: true, total, trigger });
   } catch (error) {
     handleError(res, error);
   }
@@ -54,8 +54,8 @@ router.post("/answers", async (req, res) => {
 router.post("/dismiss", async (req, res) => {
   try {
     await dismissQuestion(req.user.id, req.body);
-    const { total } = await getPendingQuestions(req.user.id);
-    res.json({ ok: true, total });
+    const { total, trigger } = await getPendingQuestions(req.user.id);
+    res.json({ ok: true, total, trigger });
   } catch (error) {
     handleError(res, error);
   }

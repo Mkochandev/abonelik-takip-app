@@ -29,11 +29,32 @@ const ERISTE_MANAGED_BY = "revenuecat";
 const ISO_CURRENCY_REGEX = /^[A-Z]{3}$/;
 
 const RETURNING_COLUMNS =
-  "id, catalog_id, started_at, reason, usage_frequency, billing_date, billing_month, price_alert_enabled";
+  "id, catalog_id, started_at, reason, usage_frequency, billing_date, billing_month, price_alert_enabled, cancelled_at";
 
 router.use(requireAuth);
 
-// POST /api/user/subscriptions — giriş yapmış kullanıcı için yeni abonelik seçimi kaydet
+// Önceden iptal edilmiş kaydı yeniden etkinleştirir (aynı katalog kaydı
+// tekrar eklenince); gönderilen alanlar yazılır, gönderilmeyenler korunur.
+async function reactivateCancelled(client, userId, catalogId, values) {
+  const { rows } = await client.query(
+    `update user_subscriptions us
+     set cancelled_at = null,
+         reason = coalesce($3, us.reason),
+         usage_frequency = coalesce($4, us.usage_frequency),
+         billing_date = coalesce($5, us.billing_date),
+         billing_month = case when $5::int is null then us.billing_month else $6::int end,
+         price_alert_enabled = coalesce($7, us.price_alert_enabled)
+     from subscriptions_catalog sc
+     where us.user_id = $1 and us.catalog_id = $2 and us.cancelled_at is not null
+       and sc.id = us.catalog_id and sc.managed_by is null and sc.status = 'active'
+     returning ${RETURNING_COLUMNS.split(", ").map((column) => `us.${column}`).join(", ")}`,
+    [userId, catalogId, ...values]
+  );
+  return rows[0] ?? null;
+}
+
+// POST /api/user/subscriptions — giriş yapmış kullanıcı için yeni abonelik seçimi kaydet.
+// Aynı kayıt daha önce "İptal ettim" ile işaretlendiyse yeniden etkinleşir.
 router.post("/", async (req, res) => {
   const { catalog_id, reason, usage_frequency, price_alert_enabled } = req.body;
 
@@ -60,6 +81,19 @@ router.post("/", async (req, res) => {
         }
       }
 
+      const values = [
+        reason || null,
+        usage_frequency || null,
+        billing.billing_date,
+        billing.billing_month,
+        price_alert_enabled === undefined ? null : price_alert_enabled,
+      ];
+
+      const reactivated = await reactivateCancelled(client, req.user.id, catalog_id, values);
+      if (reactivated) {
+        return { row: reactivated };
+      }
+
       // Uygulamanın yönettiği (erişte Premium) ve yayında olmayan kayıtlar
       // elle eklenemez.
       const { rows } = await client.query(
@@ -70,15 +104,7 @@ router.post("/", async (req, res) => {
          from subscriptions_catalog sc
          where sc.id = $2 and sc.managed_by is null and sc.status = 'active'
          returning ${RETURNING_COLUMNS}`,
-        [
-          req.user.id,
-          catalog_id,
-          reason || null,
-          usage_frequency || null,
-          billing.billing_date,
-          billing.billing_month,
-          price_alert_enabled === undefined ? null : price_alert_enabled,
-        ]
+        [req.user.id, catalog_id, ...values]
       );
 
       return { row: rows[0] };
@@ -155,7 +181,7 @@ router.post("/bulk", async (req, res) => {
       const { plan } = await lockUserAndGetPlan(client, req.user.id);
 
       const { rows: ownedRows } = await client.query(
-        `select us.catalog_id, sc.managed_by
+        `select us.catalog_id, sc.managed_by, us.cancelled_at
          from user_subscriptions us
          join subscriptions_catalog sc on sc.id = us.catalog_id
          where us.user_id = $1`,
@@ -172,8 +198,9 @@ router.post("/bulk", async (req, res) => {
       );
       const existsInCatalog = new Set(catalogRows.map((row) => row.id));
 
-      // Yönetilen kayıtlar limite sayılmaz.
-      let count = ownedRows.filter((row) => !row.managed_by).length;
+      // Yönetilen ve iptal edilmiş kayıtlar limite sayılmaz. İptal edilmiş
+      // bir kayıt burada yeniden etkinleşmez ("duplicate" ile atlanır).
+      let count = ownedRows.filter((row) => !row.managed_by && !row.cancelled_at).length;
       const toInsert = [];
       const toFillBilling = [];
       const skippedItems = [];
@@ -426,6 +453,88 @@ router.patch("/:id", async (req, res) => {
 
     if (error.code === "23514") {
       return res.status(400).json({ error: "Geçersiz billing_date değeri" });
+    }
+
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/user/subscriptions/:id/cancel — "İptal ettim": cancelled_at
+// yazılır. Kayıt silinmez; toplamlardan, hatırlatmalardan ve ücretsiz plan
+// sınırından düşer, Kıvırık iptal sonrası ilk ödeme gününde çekim olup
+// olmadığını sorar (cancel_verify). erişte Premium App Store'dan iptal
+// edilir, burada işaretlenemez. Zaten iptal edilmişse tarih değişmez.
+router.post("/:id/cancel", async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `update user_subscriptions us
+       set cancelled_at = coalesce(us.cancelled_at, now())
+       from subscriptions_catalog sc
+       where us.id = $1 and us.user_id = $2 and sc.id = us.catalog_id and sc.managed_by is null
+       returning us.id, us.cancelled_at`,
+      [req.params.id, req.user.id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Kayıt bulunamadı" });
+    }
+
+    res.json(rows[0]);
+  } catch (error) {
+    if (error.code === "22P02") {
+      return res.status(400).json({ error: "Geçersiz id formatı" });
+    }
+
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/user/subscriptions/:id/restore — "Geri al": iptal işareti
+// kalkar. Ücretsiz planda sınır doluysa 403 LIMIT_REACHED.
+router.post("/:id/restore", async (req, res) => {
+  try {
+    const result = await withTransaction(async (client) => {
+      const { plan } = await lockUserAndGetPlan(client, req.user.id);
+
+      const { rows: current } = await client.query(
+        "select cancelled_at from user_subscriptions where id = $1 and user_id = $2",
+        [req.params.id, req.user.id]
+      );
+
+      if (current.length === 0) {
+        return { notFound: true };
+      }
+
+      if (!current[0].cancelled_at) {
+        return { row: { id: req.params.id, cancelled_at: null } };
+      }
+
+      if (plan === "free" && (await getSubscriptionCount(req.user.id, client)) >= FREE_LIMIT) {
+        return { limitReached: true };
+      }
+
+      const { rows } = await client.query(
+        `update user_subscriptions set cancelled_at = null
+         where id = $1 and user_id = $2
+         returning id, cancelled_at`,
+        [req.params.id, req.user.id]
+      );
+
+      return { row: rows[0] };
+    });
+
+    if (result.notFound) {
+      return res.status(404).json({ error: "Kayıt bulunamadı" });
+    }
+
+    if (result.limitReached) {
+      return res.status(403).json({ code: "LIMIT_REACHED", limit: FREE_LIMIT });
+    }
+
+    res.json(result.row);
+  } catch (error) {
+    if (error.code === "22P02") {
+      return res.status(400).json({ error: "Geçersiz id formatı" });
     }
 
     res.status(500).json({ error: error.message });
