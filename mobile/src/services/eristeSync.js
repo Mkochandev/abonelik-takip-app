@@ -1,7 +1,7 @@
 import Purchases from "react-native-purchases";
 
 import * as api from "../api/client";
-import { isPurchasesSupported } from "./purchases";
+import { ENTITLEMENT_ID, cycleForProduct, isPurchasesSupported } from "./purchases";
 import { rescheduleAll } from "./reminders";
 
 // erişte Premium'un kendisi de kullanıcının takip listesinde görünsün:
@@ -9,23 +9,6 @@ import { rescheduleAll } from "./reminders";
 // güncellenir (plan, App Store fiyatı, yenileme tarihinden ödeme günü).
 // Premium bitince kayıt silinmez; sunucu managed_active: false döner.
 // Kullanıcı kaydı listesinden silerse sunucu bunu saklar ve tekrar eklemez.
-
-const ENTITLEMENT_ID = "premium";
-
-// Ürünün dönemi. Önce bilinen ürün kimlikleri (Android'de
-// "premium_aylik:taban-plan" biçiminde olabilir), sonra paket türü, en son
-// ürünün abonelik süresi (ISO 8601: P1M, P1Y). RevenueCat Test Store gibi
-// farklı kimlikli ürünler ("monthly") böylece de tanınır.
-function cycleForProduct(productId, product, packageType) {
-  if (productId?.startsWith("premium_yillik")) return "yearly";
-  if (productId?.startsWith("premium_aylik")) return "monthly";
-  if (packageType === "ANNUAL") return "yearly";
-  if (packageType === "MONTHLY") return "monthly";
-  const period = product?.subscriptionPeriod;
-  if (period === "P1Y" || period === "P12M") return "yearly";
-  if (period === "P1M" || period === "P4W") return "monthly";
-  return null;
-}
 
 // Kullanıcının App Store'da gördüğü ürün (fiyat ve dönem için): önce teklif
 // paketlerinden, yoksa ürün sorgusundan. { product, packageType } ya da null.

@@ -1,10 +1,25 @@
 import { useCallback, useState } from "react";
-import { Alert, Linking, Modal, Pressable, ScrollView, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
+import Purchases from "react-native-purchases";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Card, Chip, GroupedList, GroupedListRow, PillButton, Toggle } from "../components";
+import * as api from "../api/client";
+import { BrandLogo, Card, Chip, GroupedList, GroupedListRow, PillButton, Toggle } from "../components";
 import { useAuth } from "../context/AuthContext";
+import { syncEristePremium } from "../services/eristeSync";
+import { ENTITLEMENT_ID, usePremiumStatus } from "../services/purchases";
+import { openWriteReview } from "../services/storeReview";
 import {
   rescheduleAll,
   requestNotificationPermission,
@@ -148,6 +163,155 @@ const PRIVACY_URL = "https://abonelik-api.gaziustam.com/privacy.html";
 const TERMS_URL = "https://abonelik-api.gaziustam.com/terms.html";
 const MANAGE_SUBSCRIPTION_URL = "https://apps.apple.com/account/subscriptions";
 
+// Profil satırı: solda başlık, sağda ok ya da yükleniyor.
+function LinkRow({ title, onPress, busy = false }) {
+  const { colors } = useTheme();
+
+  return (
+    <GroupedListRow onPress={busy ? undefined : onPress} style={{ justifyContent: "space-between" }}>
+      <Text style={{ color: colors.text, fontWeight: "600" }}>{title}</Text>
+      {busy ? (
+        <ActivityIndicator color={colors.text2} />
+      ) : (
+        <Text style={{ color: colors.text2, fontSize: 18 }}>›</Text>
+      )}
+    </GroupedListRow>
+  );
+}
+
+// "Uygulamayı değerlendir" yalnızca iOS'ta (App Store yorum sayfası).
+function RateAppRow() {
+  return Platform.OS === "ios" ? <LinkRow title="Uygulamayı değerlendir" onPress={openWriteReview} /> : null;
+}
+
+function formatLongDate(date) {
+  return date.toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" });
+}
+
+// erişte Premium kartı ve "Satın almaları geri yükle". Durum RevenueCat'ten
+// okunur; satın alma/geri yüklemede RevenueCat dinleyicisiyle anında
+// güncellenir. RevenueCat yoksa (Android) sunucudaki plana bakılır.
+function PremiumSection({ navigation }) {
+  const { token, plan, refreshPlan } = useAuth();
+  const { spacing, radius, brand } = useTheme();
+  const premium = usePremiumStatus();
+  const [restoring, setRestoring] = useState(false);
+  const isPremium = premium.supported ? premium.active : plan === "premium";
+
+  async function handleRestore() {
+    if (!premium.supported) {
+      Alert.alert("Geri yüklenemedi", "Satın almalar yalnızca iPhone'da geri yüklenebilir.");
+      return;
+    }
+    setRestoring(true);
+    try {
+      const info = await Purchases.restorePurchases();
+      await premium.apply(info);
+      await api.syncPlan(token).catch(() => {});
+      await refreshPlan();
+      const restored = Boolean(info.entitlements.active[ENTITLEMENT_ID]);
+      if (restored) {
+        syncEristePremium(token, info);
+      }
+      Alert.alert(
+        restored ? "Tamamlandı" : "Satın alma bulunamadı",
+        restored
+          ? "Premium geri yüklendi."
+          : "Bu Apple hesabında geri yüklenecek bir Premium satın alma yok."
+      );
+    } catch (err) {
+      Alert.alert("Geri yüklenemedi", err.message);
+    } finally {
+      setRestoring(false);
+    }
+  }
+
+  const cycleLabel = premium.cycle === "yearly" ? "Yıllık" : premium.cycle === "monthly" ? "Aylık" : null;
+  const dateLabel = premium.expirationDate
+    ? `${premium.willRenew ? "Yenilenme" : "Bitiş"}: ${formatLongDate(premium.expirationDate)}`
+    : null;
+
+  return (
+    <>
+      <View
+        style={{
+          backgroundColor: brand.ink,
+          borderRadius: radius.card,
+          padding: spacing.lg,
+          marginBottom: spacing.sm,
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <BrandLogo size={44} variant="biber" />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontFamily: fontFamily.extraBold, fontSize: 19, color: "#FFFFFF" }}>
+              erişte Premium
+            </Text>
+            {!premium.loading && !isPremium ? (
+              <Text style={{ color: "#FFFFFF", opacity: 0.8, fontSize: 14, marginTop: 2 }}>
+                5 yerine sınırsız abonelik takibi.
+              </Text>
+            ) : null}
+          </View>
+          {premium.loading ? <ActivityIndicator color="#FFFFFF" /> : null}
+        </View>
+
+        {premium.loading ? null : isPremium ? (
+          <>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md }}>
+              <View
+                style={{
+                  backgroundColor: brand.safran,
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "800", color: brand.ink }}>Premium aktif</Text>
+              </View>
+              {cycleLabel ? (
+                <Text style={{ color: "#FFFFFF", fontWeight: "700", fontSize: 15 }}>{cycleLabel}</Text>
+              ) : null}
+            </View>
+            {dateLabel ? (
+              <Text style={{ color: "#FFFFFF", opacity: 0.8, fontSize: 14, marginTop: spacing.sm }}>
+                {dateLabel}
+              </Text>
+            ) : null}
+            <Pressable
+              onPress={() => Linking.openURL(MANAGE_SUBSCRIPTION_URL)}
+              accessibilityRole="button"
+              style={({ pressed }) => ({
+                height: 48,
+                borderRadius: 24,
+                borderWidth: 1.5,
+                borderColor: "rgba(255,255,255,0.6)",
+                alignItems: "center",
+                justifyContent: "center",
+                marginTop: spacing.md,
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ color: "#FFFFFF", fontWeight: "700", fontSize: 15 }}>Aboneliği yönet</Text>
+            </Pressable>
+          </>
+        ) : (
+          <PillButton
+            title="Premium'a geç"
+            variant="accent"
+            onPress={() => navigation.navigate("Paywall")}
+            style={{ marginTop: spacing.md }}
+          />
+        )}
+      </View>
+
+      <GroupedList style={{ marginBottom: spacing.lg }}>
+        <LinkRow title="Satın almaları geri yükle" onPress={handleRestore} busy={restoring} />
+      </GroupedList>
+    </>
+  );
+}
+
 // Yalnızca __DEV__: onboarding bayrağını, taslağı ve misafir listesini
 // silip uygulamayı onboarding'in başına döndürür.
 function DevResetOnboardingButton({ navigation }) {
@@ -173,7 +337,7 @@ function DevResetOnboardingButton({ navigation }) {
 }
 
 export default function ProfileScreen({ navigation }) {
-  const { user, isAuthenticated, plan, logout, deleteAccount } = useAuth();
+  const { user, isAuthenticated, logout, deleteAccount } = useAuth();
   const { colors, spacing, radius, typography } = useTheme();
   const insets = useSafeAreaInsets();
   const [confirmVisible, setConfirmVisible] = useState(false);
@@ -228,6 +392,7 @@ export default function ProfileScreen({ navigation }) {
             <Text style={{ color: colors.text, fontWeight: "600" }}>Gizlilik politikası</Text>
             <Text style={{ color: colors.text2, fontSize: 18 }}>›</Text>
           </GroupedListRow>
+          <RateAppRow />
         </GroupedList>
 
         <DevResetOnboardingButton navigation={navigation} />
@@ -261,6 +426,8 @@ export default function ProfileScreen({ navigation }) {
         Profil
       </Text>
 
+      <PremiumSection navigation={navigation} />
+
       <ReminderSettingsSection />
 
       <GroupedList style={{ marginBottom: spacing.lg }}>
@@ -268,32 +435,6 @@ export default function ProfileScreen({ navigation }) {
           <Text style={{ color: colors.text2 }}>E-posta</Text>
           <Text style={{ color: colors.text, fontWeight: "600" }}>{user?.email}</Text>
         </GroupedListRow>
-        {plan === "premium" ? (
-          <>
-            <GroupedListRow style={{ justifyContent: "space-between" }}>
-              <Text style={{ color: colors.text2 }}>Plan</Text>
-              <View
-                style={{
-                  backgroundColor: colors.accent,
-                  borderRadius: 999,
-                  paddingHorizontal: 10,
-                  paddingVertical: 3,
-                }}
-              >
-                <Text style={{ fontSize: 12, fontWeight: "700", color: colors.onAccent }}>
-                  Premium
-                </Text>
-              </View>
-            </GroupedListRow>
-            <GroupedListRow
-              onPress={() => Linking.openURL(MANAGE_SUBSCRIPTION_URL)}
-              style={{ justifyContent: "space-between" }}
-            >
-              <Text style={{ color: colors.text, fontWeight: "600" }}>Aboneliği yönet</Text>
-              <Text style={{ color: colors.text2, fontSize: 18 }}>›</Text>
-            </GroupedListRow>
-          </>
-        ) : null}
         <GroupedListRow
           onPress={() => Linking.openURL(TERMS_URL)}
           style={{ justifyContent: "space-between" }}
@@ -308,6 +449,7 @@ export default function ProfileScreen({ navigation }) {
           <Text style={{ color: colors.text, fontWeight: "600" }}>Gizlilik politikası</Text>
           <Text style={{ color: colors.text2, fontSize: 18 }}>›</Text>
         </GroupedListRow>
+        <RateAppRow />
       </GroupedList>
 
       <PillButton title="Çıkış yap" variant="outline" onPress={logout} style={{ marginBottom: spacing.sm }} />

@@ -32,6 +32,7 @@ import { buildOnboardingRoute } from './src/screens/onboarding/steps';
 import { refreshKivirikCount } from './src/services/kivirik';
 import { configurePurchases } from './src/services/purchases';
 import { configureNotifications, rescheduleAll, setReminderToken } from './src/services/reminders';
+import { recordAppOpen } from './src/services/storeReview';
 import { loadSubscriptions } from './src/services/subscriptionsSource';
 import { isOnboardingDone, loadOnboardingDraft, setOnboardingDone } from './src/storage/onboarding';
 import { useTheme } from './src/theme';
@@ -58,8 +59,11 @@ function useReminderSync() {
   }, [authReady, token]);
 
   useEffect(() => {
+    // Puanlama isteği için farklı açılış günleri sayılır.
+    recordAppOpen();
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
+        recordAppOpen();
         rescheduleAll();
         refreshKivirikCount(tokenRef.current, { force: true });
       }

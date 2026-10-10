@@ -6,6 +6,10 @@ import { isYearly } from "../../utils/billing";
 import { getCheapestPlan, toCatalogEntry } from "../../utils/catalog";
 import { ONBOARDING_STEPS } from "./steps";
 
+// Onboarding'de seçilebilecek en fazla servis (gerisi sonra katalogdan
+// eklenir). Misafir listesinin 5 sınırından bağımsız.
+export const MAX_ONBOARDING_SERVICES = 4;
+
 const OnboardingContext = createContext(null);
 
 // Onboarding ekranlarının paylaştığı durum: katalog, seçilen servisler ve
@@ -17,7 +21,10 @@ export function OnboardingProvider({ initialDraft, children }) {
   const [catalogError, setCatalogError] = useState(null);
   const [step, setStep] = useState(initialDraft?.step ?? ONBOARDING_STEPS[0]);
   // Seçim sırası korunur; misafir limitinde "ilk 5" bu sıraya göre alınır.
-  const [selectedApps, setSelectedApps] = useState(initialDraft?.selectedApps ?? []);
+  // Eski sürümden kalan taslakta sınırdan fazla seçim olabilir.
+  const [selectedApps, setSelectedApps] = useState(
+    (initialDraft?.selectedApps ?? []).slice(0, MAX_ONBOARDING_SERVICES)
+  );
   // app_name -> catalog_id (seçilmemişse en ucuz plan varsayılır)
   const [planChoices, setPlanChoices] = useState(initialDraft?.planChoices ?? {});
   // app_name -> { day, month } ya da { unknown: true } ("Bilmiyorum")

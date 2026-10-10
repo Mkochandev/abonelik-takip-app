@@ -6,7 +6,13 @@ import Svg, { Path } from "react-native-svg";
 import * as api from "../../api/client";
 import { Card, Kivirik, PillButton, ServiceLogo } from "../../components";
 import { useAuth } from "../../context/AuthContext";
-import { GUEST_LIMIT, addGuestSubscriptions } from "../../storage/guestSubscriptions";
+import { maybeRequestReview } from "../../services/storeReview";
+import { loadSubscriptions } from "../../services/subscriptionsSource";
+import {
+  GUEST_LIMIT,
+  addGuestSubscriptions,
+  getGuestSubscriptions,
+} from "../../storage/guestSubscriptions";
 import { useTheme } from "../../theme";
 import { sumMonthlyTry } from "../../utils/catalog";
 import { formatTRY } from "../../utils/price";
@@ -58,6 +64,12 @@ export default function SaveScreen({ navigation }) {
       // Limite takılan seçimler eklenmedi; Paywall Ana sayfanın üstünde açılır
       // ve kapatıldığında kullanıcı Ana sayfada kalır.
       await finish(navigation, result.limit_reached ? ["Paywall"] : []);
+      // Puanlama isteği yalnızca sorunsuz kayıtta; Paywall açılıyorsa asla.
+      if (!result.limit_reached) {
+        loadSubscriptions(activeToken)
+          .then((list) => maybeRequestReview(list.filter((sub) => !sub.cancelled_at).length))
+          .catch(() => {});
+      }
     } catch (err) {
       setSaving(false);
       Alert.alert("Kaydedilemedi", err.message);
@@ -101,6 +113,9 @@ export default function SaveScreen({ navigation }) {
     }
 
     await finish(navigation);
+    getGuestSubscriptions()
+      .then((items) => maybeRequestReview(items.length))
+      .catch(() => {});
   }
 
   return (

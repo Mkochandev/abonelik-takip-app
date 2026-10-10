@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
@@ -6,9 +6,12 @@ import { Chip, PillButton, SearchField, ServiceLogo } from "../../components";
 import { CATEGORIES } from "../../config/categories";
 import { useTheme } from "../../theme";
 import { CatalogStatus, KivirikPrompt, OnboardingLayout } from "./OnboardingLayout";
-import { useOnboarding } from "./OnboardingContext";
+import { MAX_ONBOARDING_SERVICES, useOnboarding } from "./OnboardingContext";
 
 const COLUMNS = 3;
+const PROMPT_TEXT = "Hangi servisleri kullanıyorsun? Birden fazla seçebilirsin.";
+const LIMIT_TEXT = `Şimdilik ${MAX_ONBOARDING_SERVICES} tane seç, gerisini sonra eklersin.`;
+const LIMIT_TEXT_MS = 2500;
 
 function CheckIcon({ color }) {
   return (
@@ -24,7 +27,8 @@ function CheckIcon({ color }) {
   );
 }
 
-function ServiceTile({ group, selected, width, onPress }) {
+// dimmed: sınır doluyken seçilmemiş kartlar soluk ama dokunulabilir.
+function ServiceTile({ group, selected, dimmed, width, onPress }) {
   const { colors, spacing, radius, brand } = useTheme();
 
   return (
@@ -42,7 +46,7 @@ function ServiceTile({ group, selected, width, onPress }) {
         borderRadius: radius.card,
         borderWidth: 2,
         borderColor: selected ? brand.safran : "transparent",
-        opacity: pressed ? 0.7 : 1,
+        opacity: dimmed ? 0.4 : pressed ? 0.7 : 1,
       })}
     >
       <ServiceLogo
@@ -93,6 +97,10 @@ export default function SelectServicesScreen({ navigation }) {
   const { width: screenWidth } = useWindowDimensions();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState(null);
+  const [limitHint, setLimitHint] = useState(false);
+  const hintTimerRef = useRef(null);
+
+  useEffect(() => () => clearTimeout(hintTimerRef.current), []);
 
   const tileWidth = (screenWidth - spacing.md * 2 - spacing.sm * (COLUMNS - 1)) / COLUMNS;
 
@@ -106,6 +114,18 @@ export default function SelectServicesScreen({ navigation }) {
   }, [catalog, query, category]);
 
   const count = selectedApps.length;
+  const isFull = count >= MAX_ONBOARDING_SERVICES;
+
+  // Sınır doluyken yeni servis seçilmez; Kıvırık 2,5 sn uyarır.
+  function handleTilePress(appName) {
+    if (isFull && !isSelected(appName)) {
+      setLimitHint(true);
+      clearTimeout(hintTimerRef.current);
+      hintTimerRef.current = setTimeout(() => setLimitHint(false), LIMIT_TEXT_MS);
+      return;
+    }
+    toggleApp(appName);
+  }
 
   return (
     <OnboardingLayout
@@ -113,7 +133,7 @@ export default function SelectServicesScreen({ navigation }) {
       footer={
         <>
           <PillButton
-            title={`${count} seçildi · Devam`}
+            title={`${count}/${MAX_ONBOARDING_SERVICES} seçildi · Devam`}
             disabled={count === 0}
             onPress={() => navigation.navigate("ConfirmPlans")}
           />
@@ -134,7 +154,7 @@ export default function SelectServicesScreen({ navigation }) {
       }
     >
       <View style={{ paddingHorizontal: spacing.md }}>
-        <KivirikPrompt text="Hangi servisleri kullanıyorsun? Birden fazla seçebilirsin." />
+        <KivirikPrompt text={limitHint ? LIMIT_TEXT : PROMPT_TEXT} />
         <SearchField value={query} onChangeText={setQuery} style={{ marginBottom: spacing.md }} />
       </View>
 
@@ -184,7 +204,8 @@ export default function SelectServicesScreen({ navigation }) {
               group={item}
               width={tileWidth}
               selected={isSelected(item.app_name)}
-              onPress={() => toggleApp(item.app_name)}
+              dimmed={isFull && !isSelected(item.app_name)}
+              onPress={() => handleTilePress(item.app_name)}
             />
           )}
         />

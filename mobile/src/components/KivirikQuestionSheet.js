@@ -1,5 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as api from "../api/client";
 import { FOLLOW_UP_UNUSED, KIVIRIK_QUESTIONS } from "../config/kivirikQuestions";
 import { setKivirikTotal } from "../services/kivirik";
+import { maybeRequestReview } from "../services/storeReview";
 import { rescheduleAll } from "../services/reminders";
 import { loadSubscriptions } from "../services/subscriptionsSource";
 import { invalidateUserSettings } from "../services/userSettings";
@@ -65,6 +66,8 @@ function SheetBody({ token, editQuestion, onClose }) {
   // Aynı soru içindeki ara adım: null | "followUp" (takip sorusu) | "guide"
   // (iptal rehberi).
   const [step, setStep] = useState(null);
+  // Bu oturumda hata ya da iptal rehberi görüldüyse bitişte puanlama istenmez.
+  const reviewBlockedRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [changed, setChanged] = useState(false);
   const [monthlyTotal, setMonthlyTotal] = useState(null);
@@ -102,7 +105,11 @@ function SheetBody({ token, editQuestion, onClose }) {
     }
     setPhase("done");
     try {
-      setMonthlyTotal(sumCountedMonthlyTry(await loadSubscriptions(token)));
+      const subscriptions = await loadSubscriptions(token);
+      setMonthlyTotal(sumCountedMonthlyTry(subscriptions));
+      if (!reviewBlockedRef.current) {
+        maybeRequestReview(subscriptions.filter((sub) => !sub.cancelled_at).length);
+      }
     } catch (err) {
       setMonthlyTotal(null);
     }
@@ -125,6 +132,7 @@ function SheetBody({ token, editQuestion, onClose }) {
       setChanged(true);
       onSuccess();
     } catch (err) {
+      reviewBlockedRef.current = true;
       Alert.alert("Kaydedilemedi", err.message);
     } finally {
       setBusy(false);
@@ -144,7 +152,10 @@ function SheetBody({ token, editQuestion, onClose }) {
           navigation.navigate(...target);
         }
       : action === "guide"
-        ? () => setStep("guide")
+        ? () => {
+            reviewBlockedRef.current = true;
+            setStep("guide");
+          }
         : config.followUp?.(value)
           ? () => setStep("followUp")
           : next;
@@ -174,6 +185,7 @@ function SheetBody({ token, editQuestion, onClose }) {
   // Takip sorusunun cevabı kaydedilmez; yalnızca rehbere götürür.
   function answerFollowUp({ answer: value }) {
     if (value === "guide") {
+      reviewBlockedRef.current = true;
       setStep("guide");
     } else {
       next();
