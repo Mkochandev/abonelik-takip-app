@@ -15,7 +15,17 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import * as api from "../api/client";
-import { BrandLogo, Card, Chip, GroupedList, GroupedListRow, PillButton, Toggle } from "../components";
+import {
+  BrandLogo,
+  Card,
+  Chip,
+  GroupedList,
+  GroupedListRow,
+  KivirikBubble,
+  KivirikHead,
+  PillButton,
+  Toggle,
+} from "../components";
 import { useAuth } from "../context/AuthContext";
 import { syncEristePremium } from "../services/eristeSync";
 import { ENTITLEMENT_ID, usePremiumStatus } from "../services/purchases";
@@ -159,8 +169,8 @@ function DevTestNotificationButton() {
   );
 }
 
-const PRIVACY_URL = "https://abonelik-api.gaziustam.com/privacy.html";
-const TERMS_URL = "https://abonelik-api.gaziustam.com/terms.html";
+const PRIVACY_URL = "https://eriste.app/gizlilik";
+const TERMS_URL = "https://eriste.app/kosullar";
 const MANAGE_SUBSCRIPTION_URL = "https://apps.apple.com/account/subscriptions";
 
 // Profil satırı: solda başlık, sağda ok ya da yükleniyor.
@@ -379,17 +389,17 @@ export default function ProfileScreen({ navigation }) {
 
         <GroupedList>
           <GroupedListRow
-            onPress={() => Linking.openURL(TERMS_URL)}
-            style={{ justifyContent: "space-between" }}
-          >
-            <Text style={{ color: colors.text, fontWeight: "600" }}>Kullanım koşulları</Text>
-            <Text style={{ color: colors.text2, fontSize: 18 }}>›</Text>
-          </GroupedListRow>
-          <GroupedListRow
             onPress={() => Linking.openURL(PRIVACY_URL)}
             style={{ justifyContent: "space-between" }}
           >
-            <Text style={{ color: colors.text, fontWeight: "600" }}>Gizlilik politikası</Text>
+            <Text style={{ color: colors.text, fontWeight: "600" }}>Gizlilik Politikası</Text>
+            <Text style={{ color: colors.text2, fontSize: 18 }}>›</Text>
+          </GroupedListRow>
+          <GroupedListRow
+            onPress={() => Linking.openURL(TERMS_URL)}
+            style={{ justifyContent: "space-between" }}
+          >
+            <Text style={{ color: colors.text, fontWeight: "600" }}>Kullanım Koşulları</Text>
             <Text style={{ color: colors.text2, fontSize: 18 }}>›</Text>
           </GroupedListRow>
           <RateAppRow />
@@ -436,17 +446,17 @@ export default function ProfileScreen({ navigation }) {
           <Text style={{ color: colors.text, fontWeight: "600" }}>{user?.email}</Text>
         </GroupedListRow>
         <GroupedListRow
-          onPress={() => Linking.openURL(TERMS_URL)}
-          style={{ justifyContent: "space-between" }}
-        >
-          <Text style={{ color: colors.text, fontWeight: "600" }}>Kullanım koşulları</Text>
-          <Text style={{ color: colors.text2, fontSize: 18 }}>›</Text>
-        </GroupedListRow>
-        <GroupedListRow
           onPress={() => Linking.openURL(PRIVACY_URL)}
           style={{ justifyContent: "space-between" }}
         >
-          <Text style={{ color: colors.text, fontWeight: "600" }}>Gizlilik politikası</Text>
+          <Text style={{ color: colors.text, fontWeight: "600" }}>Gizlilik Politikası</Text>
+          <Text style={{ color: colors.text2, fontSize: 18 }}>›</Text>
+        </GroupedListRow>
+        <GroupedListRow
+          onPress={() => Linking.openURL(TERMS_URL)}
+          style={{ justifyContent: "space-between" }}
+        >
+          <Text style={{ color: colors.text, fontWeight: "600" }}>Kullanım Koşulları</Text>
           <Text style={{ color: colors.text2, fontSize: 18 }}>›</Text>
         </GroupedListRow>
         <RateAppRow />
@@ -487,13 +497,16 @@ export default function ProfileScreen({ navigation }) {
               }}
             />
 
-            <Text style={{ fontFamily: fontFamily.extraBold, fontSize: 22, color: colors.text }}>
-              Hesabını silmek istiyor musun?
-            </Text>
-            <Text style={{ color: colors.text2, marginTop: spacing.sm, lineHeight: 21 }}>
-              Bu işlem geri alınamaz; hesabın ve kayıtlı tüm abonelik seçimlerin kalıcı olarak
-              silinir. App Store üzerinden satın aldığın bir abonelik varsa, hesabını silmek onu
-              otomatik iptal etmez.
+            <View style={{ flexDirection: "row", alignItems: "flex-end", gap: spacing.sm }}>
+              <KivirikHead size={52} mood="sasirmis" />
+              <KivirikBubble
+                style={{ flex: 1 }}
+                text="Bütün aboneliklerin ve hesabın silinecek. Emin misin?"
+              />
+            </View>
+            <Text style={{ color: colors.text2, marginTop: spacing.md, lineHeight: 21 }}>
+              Bu işlem geri alınamaz. erişte Premium'u App Store'dan aldıysan hesabını silmek
+              aboneliği iptal etmez; yenilenmemesi için App Store'dan ayrıca iptal etmelisin.
             </Text>
 
             <Pressable onPress={() => Linking.openURL(MANAGE_SUBSCRIPTION_URL)} style={{ marginTop: spacing.sm }}>

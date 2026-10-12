@@ -2,6 +2,7 @@ import { useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { forgotPassword } from "../api/client";
 import { Kivirik, NoodleBackground, PillButton } from "../components";
 import { APP_NAME } from "../config/brand";
 import { useAuth } from "../context/AuthContext";
@@ -20,7 +21,16 @@ const COPY = {
     submit: "Hesap oluştur",
     mood: "mutlu",
   },
+  forgot: {
+    title: "Şifreni mi unuttun?",
+    subtitle: "E-postanı yaz, sıfırlama bağlantısını gönderelim.",
+    submit: "Bağlantı gönder",
+    mood: "sasirmis",
+  },
 };
+
+// Sunucu her durumda aynı cevabı verir; e-postanın kayıtlı olup olmadığı belli olmaz.
+const FORGOT_SENT_MESSAGE = "Eğer bu e-postayla bir hesap varsa sıfırlama bağlantısı gönderdik.";
 
 const MASCOT_WIDTH = 220;
 // Kâsenin altı viewBox'ta 222/230'da biter; kalan şeffaf pay kadar form
@@ -118,7 +128,7 @@ function ModeSegment({ mode, onChange }) {
 }
 
 // Giriş ve kayıt tek ekranda iki mod olarak; Login/Register rotaları yalnızca
-// başlangıç modunu belirler. Koyu zemin iki temada da aynıdır, form kartı
+// başlangıç modunu belirler. "Şifremi unuttum" girişten açılan üçüncü mod. Koyu zemin iki temada da aynıdır, form kartı
 // temaya uyar.
 export default function AuthScreen({ navigation, route, initialMode }) {
   const { login, register } = useAuth();
@@ -130,6 +140,7 @@ export default function AuthScreen({ navigation, route, initialMode }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [loading, setLoading] = useState(false);
   const copy = COPY[mode];
 
@@ -138,9 +149,33 @@ export default function AuthScreen({ navigation, route, initialMode }) {
   function handleModeChange(value) {
     setMode(value);
     setError(null);
+    setNotice(null);
+  }
+
+  async function handleForgot() {
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setError("E-posta adresini yaz.");
+      return;
+    }
+    setError(null);
+    setNotice(null);
+    setLoading(true);
+    try {
+      const result = await forgotPassword(trimmed);
+      setNotice(result?.message || FORGOT_SENT_MESSAGE);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleSubmit() {
+    if (mode === "forgot") {
+      await handleForgot();
+      return;
+    }
     setError(null);
     setLoading(true);
     try {
@@ -207,11 +242,11 @@ export default function AuthScreen({ navigation, route, initialMode }) {
             {copy.title}
           </Text>
           <Text style={{ fontSize: 15, color: colors.text2, marginTop: 4, lineHeight: 21 }}>
-            {promptMessage || copy.subtitle}
+            {(mode !== "forgot" && promptMessage) || copy.subtitle}
           </Text>
         </View>
 
-        <ModeSegment mode={mode} onChange={handleModeChange} />
+        {mode === "forgot" ? null : <ModeSegment mode={mode} onChange={handleModeChange} />}
 
         <Field
           label="E-posta"
@@ -222,36 +257,40 @@ export default function AuthScreen({ navigation, route, initialMode }) {
           value={email}
           onChangeText={setEmail}
         />
-        <Field
-          label="Şifre"
-          placeholder="••••••••"
-          secureTextEntry
-          autoComplete={mode === "login" ? "current-password" : "new-password"}
-          value={password}
-          onChangeText={setPassword}
-        />
+        {mode === "forgot" ? null : (
+          <Field
+            label="Şifre"
+            placeholder="••••••••"
+            secureTextEntry
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
+            value={password}
+            onChangeText={setPassword}
+          />
+        )}
 
         {mode === "login" ? (
-          // Şifre sıfırlama akışı henüz yok; bağlantı pasif duruyor.
           <Text
             accessibilityRole="link"
-            accessibilityState={{ disabled: true }}
-            style={{ alignSelf: "flex-end", color: colors.text2, fontSize: 13.5, fontWeight: "600", opacity: 0.5 }}
+            onPress={() => handleModeChange("forgot")}
+            style={{ alignSelf: "flex-end", color: colors.text2, fontSize: 13.5, fontWeight: "600" }}
           >
             Şifremi unuttum
           </Text>
         ) : null}
 
         {error ? <Text style={{ color: colors.danger, textAlign: "center" }}>{error}</Text> : null}
+        {notice ? (
+          <Text style={{ color: colors.text, textAlign: "center", lineHeight: 21 }}>{notice}</Text>
+        ) : null}
 
         <PillButton title={copy.submit} height={58} onPress={handleSubmit} loading={loading} />
 
         <Text
-          onPress={() => navigation.goBack()}
+          onPress={() => (mode === "forgot" ? handleModeChange("login") : navigation.goBack())}
           accessibilityRole="button"
           style={{ color: colors.text, fontWeight: "600", fontSize: 15, textAlign: "center" }}
         >
-          Misafir olarak devam et
+          {mode === "forgot" ? "Girişe dön" : "Misafir olarak devam et"}
         </Text>
       </View>
     </KeyboardAvoidingView>

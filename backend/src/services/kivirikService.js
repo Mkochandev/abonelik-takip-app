@@ -265,12 +265,13 @@ function parseText(value) {
   return text;
 }
 
-async function updateSubscription(client, subscriptionId, values) {
+// Sahiplik answerQuestion'da kontrol edilir; user_id filtresi ek güvence.
+async function updateSubscription(client, userId, subscriptionId, values) {
   const columns = Object.keys(values);
-  const sets = columns.map((column, index) => `${column} = $${index + 2}`);
+  const sets = columns.map((column, index) => `${column} = $${index + 3}`);
   await client.query(
-    `update user_subscriptions set ${sets.join(", ")} where id = $1`,
-    [subscriptionId, ...columns.map((column) => values[column])]
+    `update user_subscriptions set ${sets.join(", ")} where id = $1 and user_id = $2`,
+    [subscriptionId, userId, ...columns.map((column) => values[column])]
   );
 }
 
@@ -287,17 +288,17 @@ async function applyEffect(client, { userId, question, answer, value, sub }) {
       if (yearly && billing.billing_month == null) {
         throw new KivirikError("Yıllık planda ay da seçilmeli");
       }
-      await updateSubscription(client, sub.id, {
+      await updateSubscription(client, userId, sub.id, {
         billing_date: billing.billing_date,
         billing_month: yearly ? billing.billing_month : null,
       });
       return JSON.stringify({ day: billing.billing_date, month: yearly ? billing.billing_month : null });
     }
     case "payment_channel":
-      await updateSubscription(client, sub.id, { payment_channel: answer });
+      await updateSubscription(client, userId, sub.id, { payment_channel: answer });
       return null;
     case "usage_frequency":
-      await updateSubscription(client, sub.id, { usage_frequency: answer });
+      await updateSubscription(client, userId, sub.id, { usage_frequency: answer });
       return null;
     case "reminder_days_before":
       await updateSettings(userId, { reminder_days_before: Number(answer) }, client);
@@ -305,11 +306,11 @@ async function applyEffect(client, { userId, question, answer, value, sub }) {
     case "price_confirm": {
       if (answer === "yes") {
         // Katalog fiyatı doğru: kullanıcıya özel tutar varsa kalkar.
-        await updateSubscription(client, sub.id, { custom_price: null, custom_currency: null });
+        await updateSubscription(client, userId, sub.id, { custom_price: null, custom_currency: null });
         return null;
       }
       const amount = parseAmount(value);
-      await updateSubscription(client, sub.id, { custom_price: amount, custom_currency: "TRY" });
+      await updateSubscription(client, userId, sub.id, { custom_price: amount, custom_currency: "TRY" });
       await client.query(
         "insert into price_reports (catalog_id, user_id, reported_price) values ($1, $2, $3)",
         [sub.catalog_id, userId, amount]
@@ -317,29 +318,29 @@ async function applyEffect(client, { userId, question, answer, value, sub }) {
       return String(amount);
     }
     case "share_count":
-      await updateSubscription(client, sub.id, { share_count: Number(answer) });
+      await updateSubscription(client, userId, sub.id, { share_count: Number(answer) });
       return null;
     case "is_trial": {
       if (answer === "no") {
-        await updateSubscription(client, sub.id, { is_trial: false, trial_ends_at: null });
+        await updateSubscription(client, userId, sub.id, { is_trial: false, trial_ends_at: null });
         return null;
       }
       const date = parseFutureDate(value);
-      await updateSubscription(client, sub.id, { is_trial: true, trial_ends_at: date });
+      await updateSubscription(client, userId, sub.id, { is_trial: true, trial_ends_at: date });
       return date;
     }
     case "planned_end": {
       if (answer === "no") {
-        await updateSubscription(client, sub.id, { planned_end_at: null });
+        await updateSubscription(client, userId, sub.id, { planned_end_at: null });
         return null;
       }
       const date = parseFutureDate(value);
-      await updateSubscription(client, sub.id, { planned_end_at: date });
+      await updateSubscription(client, userId, sub.id, { planned_end_at: date });
       return date;
     }
     case "reason": {
       const text = parseText(value);
-      await updateSubscription(client, sub.id, { reason: text });
+      await updateSubscription(client, userId, sub.id, { reason: text });
       return text;
     }
     case "is_student":
@@ -361,7 +362,7 @@ async function applyEffect(client, { userId, question, answer, value, sub }) {
       if (!sub.trial_ends_at) throw new KivirikError("Deneme bitiş tarihi yok");
       const [, month, day] = sub.trial_ends_at.split("-").map(Number);
       const yearly = sub.billing_cycle === "yearly";
-      await updateSubscription(client, sub.id, {
+      await updateSubscription(client, userId, sub.id, {
         billing_date: day,
         billing_month: yearly ? month : null,
       });

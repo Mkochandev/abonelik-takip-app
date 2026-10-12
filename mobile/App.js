@@ -107,6 +107,20 @@ function useNotificationNavigation(navigationRef, ready) {
   }, [ready]);
 }
 
+// Oturum sunucuda geçersiz olunca (refresh reddedildi) giriş ekranı bir kez
+// açılır; kullanıcı girmek istemezse misafir olarak devam eder.
+function useSessionExpiredNavigation(navigationRef, navReady) {
+  const { sessionExpired, consumeSessionExpired } = useAuth();
+
+  useEffect(() => {
+    if (!sessionExpired || !navReady || !navigationRef.isReady()) {
+      return;
+    }
+    consumeSessionExpired();
+    navigationRef.navigate('Login', { promptMessage: 'Oturumun sona erdi, tekrar giriş yap.' });
+  }, [sessionExpired, navReady]);
+}
+
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const Stack = createNativeStackNavigator();
@@ -160,6 +174,8 @@ function ThemedNavigationContainer() {
   useReminderSync();
   const navigationRef = useNavigationContainerRef();
   useNotificationNavigation(navigationRef, authReady && onboardingBoot !== null);
+  const [navReady, setNavReady] = useState(false);
+  useSessionExpiredNavigation(navigationRef, navReady);
   const initialStateRef = useRef(undefined);
   const ready = authReady && onboardingBoot !== null;
 
@@ -202,6 +218,7 @@ function ThemedNavigationContainer() {
   return (
     <NavigationContainer
       ref={navigationRef}
+      onReady={() => setNavReady(true)}
       theme={navigationTheme}
       initialState={initialStateRef.current ?? undefined}
     >

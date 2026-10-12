@@ -45,11 +45,12 @@ function resolveBaseUrl() {
 
 export const API_BASE_URL = resolveBaseUrl();
 
-// AuthContext, oturumu SecureStore'da tuttuğu için refresh_token'a ve token
+// AuthContext, oturumu SecureStore'da tuttuğu için güncel token'lara ve token
 // güncelleme/oturum kapatma mantığına buradan erişebilmemiz gerekiyor.
 // configureAuthClient ile bu davranışlar dışarıdan (AuthProvider mount
 // olduğunda) enjekte edilir.
 let authHandlers = {
+  getAccessToken: () => null,
   getRefreshToken: () => null,
   onTokenRefreshed: () => {},
   onSessionExpired: () => {},
@@ -57,6 +58,43 @@ let authHandlers = {
 
 export function configureAuthClient(handlers) {
   authHandlers = { ...authHandlers, ...handlers };
+}
+
+class SessionExpiredError extends Error {
+  constructor() {
+    super("Oturumun sona erdi, tekrar giriş yap");
+    this.code = "session_expired";
+  }
+}
+
+// Sunucu refresh token'ı her kullanımda değiştirir ve eski bir token tekrar
+// gelirse bütün oturumları kapatır. Bu yüzden aynı anda gelen 401'lerin hepsi
+// tek bir refresh isteğini bekler.
+let refreshInFlight = null;
+
+function refreshSessionOnce() {
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      const refreshToken = authHandlers.getRefreshToken();
+      if (!refreshToken) {
+        throw new SessionExpiredError();
+      }
+      try {
+        const refreshed = await refresh(refreshToken);
+        authHandlers.onTokenRefreshed(refreshed.session);
+        return refreshed.session.access_token;
+      } catch (error) {
+        // Ağ hatasında oturum kapanmaz; yalnızca sunucu token'ı reddederse.
+        if (error.status === 401) {
+          throw new SessionExpiredError();
+        }
+        throw error;
+      }
+    })().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
 }
 
 async function request(path, { method = "GET", token, body, isRetry = false } = {}) {
@@ -74,25 +112,26 @@ async function request(path, { method = "GET", token, body, isRetry = false } = 
     });
   } catch (networkError) {
     throw new Error(
-      `Sunucuya ulaşılamadı (${API_BASE_URL}). IP adresini ve backend'in çalıştığını kontrol et.`
+      __DEV__
+        ? `Sunucuya ulaşılamadı (${API_BASE_URL}). IP adresini ve backend'in çalıştığını kontrol et.`
+        : "Sunucuya ulaşılamadı. İnternet bağlantını kontrol edip tekrar dene."
     );
   }
 
   if (response.status === 401 && token && !isRetry) {
-    const refreshToken = authHandlers.getRefreshToken();
-
-    if (refreshToken) {
-      try {
-        const refreshed = await refresh(refreshToken);
-        authHandlers.onTokenRefreshed(refreshed.session);
-        return request(path, { method, token: refreshed.session.access_token, body, isRetry: true });
-      } catch (refreshError) {
+    // Bu istek giderken başka bir istek oturumu zaten yenilediyse yeni
+    // token'la tekrar denenir; yoksa refresh yapılır.
+    const currentToken = authHandlers.getAccessToken();
+    try {
+      const nextToken =
+        currentToken && currentToken !== token ? currentToken : await refreshSessionOnce();
+      return request(path, { method, token: nextToken, body, isRetry: true });
+    } catch (error) {
+      if (error instanceof SessionExpiredError) {
         authHandlers.onSessionExpired();
-        throw new Error("Oturum süresi doldu, tekrar giriş yap");
       }
+      throw error;
     }
-
-    authHandlers.onSessionExpired();
   }
 
   if (response.status === 204) {
@@ -105,6 +144,7 @@ async function request(path, { method = "GET", token, body, isRetry = false } = 
     const requestError = new Error(
       translateAuthError(data?.code, data?.error) || "Bilinmeyen bir hata oluştu"
     );
+    requestError.status = response.status;
     requestError.code = data?.code;
     requestError.data = data;
     throw requestError;
@@ -121,16 +161,23 @@ export function login(email, password) {
   return request("/auth/login", { method: "POST", body: { email, password } });
 }
 
-export function logout(token) {
-  return request("/auth/logout", { method: "POST", token });
+// Refresh token'ı sunucuda iptal eder (access token gerekmez).
+export function logout(refreshToken) {
+  return request("/auth/logout", { method: "POST", body: { refresh_token: refreshToken } });
 }
 
 export function refresh(refreshToken) {
   return request("/auth/refresh", { method: "POST", body: { refresh_token: refreshToken } });
 }
 
+// Yanıt her durumda aynı: { ok, message } (e-postanın kayıtlı olup olmadığı belli olmaz).
+export function forgotPassword(email) {
+  return request("/auth/forgot-password", { method: "POST", body: { email } });
+}
+
+// Hesabı ve sunucudaki bütün verisini siler.
 export function deleteAccount(token) {
-  return request("/auth/account", { method: "DELETE", token });
+  return request("/auth/me", { method: "DELETE", token });
 }
 
 export function me(token) {

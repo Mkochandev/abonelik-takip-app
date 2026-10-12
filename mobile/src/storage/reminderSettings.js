@@ -32,3 +32,8 @@ export async function updateReminderSettings(updates) {
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   return next;
 }
+
+// Hesap silinince cihazdaki tercihler de sıfırlanır.
+export async function clearReminderSettings() {
+  await AsyncStorage.removeItem(STORAGE_KEY);
+}

@@ -1,10 +1,13 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import * as Notifications from "expo-notifications";
 
 import * as api from "../api/client";
 import { syncEristePremium } from "../services/eristeSync";
 import { syncGuestSubscriptions } from "../services/guestSync";
 import { identifyPurchasesUser, signOutPurchasesUser } from "../services/purchases";
 import { clearGuestSubscriptions } from "../storage/guestSubscriptions";
+import { clearOnboardingDraft } from "../storage/onboarding";
+import { clearReminderSettings } from "../storage/reminderSettings";
 import { clearTokens, loadStoredTokens, saveTokens } from "./tokenStorage";
 
 const AuthContext = createContext(null);
@@ -20,6 +23,9 @@ export function AuthProvider({ children }) {
   // Açılışta misafir listesi aktarılırken limite takılındıysa Ana sayfa
   // Paywall'ı bir kez açar (bkz. HomeScreen).
   const [pendingPaywall, setPendingPaywall] = useState(false);
+  // Oturum sunucuda geçersiz olduysa (refresh reddedildi) giriş ekranı bir
+  // kez açılır (bkz. App.js).
+  const [sessionExpired, setSessionExpired] = useState(false);
   const refreshTokenRef = useRef(null);
   const tokenRef = useRef(null);
 
@@ -94,8 +100,20 @@ export function AuthProvider({ children }) {
     await signOutPurchasesUser();
   }
 
+  // Hesap silinince bu cihazdaki kişisel veriler de silinir: misafir listesi,
+  // hatırlatma tercihleri, planlanmış bildirimler ve yarım kalmış onboarding.
+  async function clearDeviceData() {
+    await Promise.all([
+      clearGuestSubscriptions(),
+      clearReminderSettings(),
+      clearOnboardingDraft(),
+      Notifications.cancelAllScheduledNotificationsAsync(),
+    ]).catch(() => {});
+  }
+
   useEffect(() => {
     api.configureAuthClient({
+      getAccessToken: () => tokenRef.current,
       getRefreshToken: () => refreshTokenRef.current,
       onTokenRefreshed: (session) => {
         refreshTokenRef.current = session?.refresh_token ?? refreshTokenRef.current;
@@ -107,7 +125,12 @@ export function AuthProvider({ children }) {
         }).catch(() => {});
       },
       onSessionExpired: () => {
+        // Aynı anda birden çok istek düşebilir; yalnızca ilkinde çalışır.
+        if (!refreshTokenRef.current) {
+          return;
+        }
         clearSession();
+        setSessionExpired(true);
       },
     });
 
@@ -144,7 +167,14 @@ export function AuthProvider({ children }) {
         // (plan değişimi, yenilemede kayan ödeme günü).
         syncEristePremium(tokenRef.current);
       } catch (err) {
-        await clearSession();
+        if (err.code === "session_expired" || err.status === 401) {
+          // Sunucu oturumu reddetti (Supabase döneminden kalan token'lar da
+          // buraya düşer); onSessionExpired giriş ekranını açtırır.
+          await clearSession();
+        } else {
+          // Ağ/sunucu hatası: oturum korunur, veriler bağlantı gelince yüklenir.
+          setToken(tokenRef.current);
+        }
       } finally {
         setAuthReady(true);
       }
@@ -164,6 +194,10 @@ export function AuthProvider({ children }) {
       consumePendingPaywall() {
         setPendingPaywall(false);
       },
+      sessionExpired,
+      consumeSessionExpired() {
+        setSessionExpired(false);
+      },
       isAuthenticated: !!token,
       isPremium: plan === "premium",
       // login/register: { plan, guestSync } döner. guestSync, misafir
@@ -177,20 +211,31 @@ export function AuthProvider({ children }) {
         return afterSignIn(data);
       },
       async logout() {
-        if (token) {
-          await api.logout(token).catch(() => {});
+        if (refreshTokenRef.current) {
+          await api.logout(refreshTokenRef.current).catch(() => {});
         }
         await clearSession();
       },
+      // DELETE /api/auth/me: hesap ve sunucudaki bütün veri silinir; ardından
+      // oturum kapanır ve cihazdaki veriler temizlenir (misafir boş başlar).
       async deleteAccount() {
-        await api.deleteAccount(token);
-        // Misafire dönüşte bu cihazdaki liste boş başlasın.
-        await clearGuestSubscriptions().catch(() => {});
+        await api.deleteAccount(tokenRef.current);
+        await clearDeviceData();
         await clearSession();
       },
       refreshPlan,
     }),
-    [user, token, authReady, plan, premiumExpiresAt, limit, subscriptionCount, pendingPaywall]
+    [
+      user,
+      token,
+      authReady,
+      plan,
+      premiumExpiresAt,
+      limit,
+      subscriptionCount,
+      pendingPaywall,
+      sessionExpired,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -9,8 +9,8 @@ import { useAuth } from "../context/AuthContext";
 import { syncEristePremium } from "../services/eristeSync";
 import { fontFamily, useTheme } from "../theme";
 
-const TERMS_URL = "https://abonelik-api.gaziustam.com/terms.html";
-const PRIVACY_URL = "https://abonelik-api.gaziustam.com/privacy.html";
+const TERMS_URL = "https://eriste.app/kosullar";
+const PRIVACY_URL = "https://eriste.app/gizlilik";
 
 function packageTitle(pkg) {
   if (pkg.packageType === "ANNUAL") return "Yıllık";

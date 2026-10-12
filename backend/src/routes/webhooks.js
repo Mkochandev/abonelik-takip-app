@@ -36,10 +36,11 @@ function affectedUserIds(event) {
 }
 
 // POST /api/webhooks/revenuecat — RevenueCat'ten gelen abonelik olayları.
-// app_user_id, mobil tarafta Purchases.logIn ile ayarlanan Supabase
-// kullanıcı id'sidir. Olay tipine göre planı tahmin etmek yerine her
-// olayda RevenueCat'ten güncel entitlement durumunu çekip yazıyoruz; böylece
-// iade, iptal ve transfer gibi durumlar da doğru yansır.
+// app_user_id, mobil tarafta Purchases.logIn ile ayarlanan kullanıcı id'sidir
+// (users.id; Supabase'den taşınan kullanıcılarda aynı UUID). Olay tipine
+// göre planı tahmin etmek yerine her olayda RevenueCat'ten güncel
+// entitlement durumunu çekip yazıyoruz; böylece iade, iptal ve transfer
+// gibi durumlar da doğru yansır.
 router.post("/revenuecat", async (req, res) => {
   if (!isValidWebhookSecret(req.headers.authorization)) {
     return res.status(401).json({ error: "Geçersiz webhook secret" });

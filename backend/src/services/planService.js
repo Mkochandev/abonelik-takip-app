@@ -63,9 +63,9 @@ async function withTransaction(fn) {
 
 // Transaction içinde çağrılmalı. Kullanıcının users satırını FOR UPDATE ile
 // kilitler; böylece aynı kullanıcı için eşzamanlı ekleme istekleri sırayla
-// çalışır ve "say → ekle" arasında limit aşılamaz. users satırı henüz
-// oluşmamışsa (senkron tetikleyicisi gecikmişse) aynı garantiyi advisory
-// lock ile sağlarız.
+// çalışır ve "say → ekle" arasında limit aşılamaz. users satırı yoksa
+// (istek sırasında hesap silindiyse) aynı garantiyi advisory lock ile
+// sağlarız.
 async function lockUserAndGetPlan(client, userId) {
   const { rows } = await client.query(
     "select plan, premium_expires_at from users where id = $1 for update",
@@ -129,6 +129,27 @@ async function syncPlanFromRevenueCat(userId) {
   return getEffectivePlan(userId);
 }
 
+// Hesap silinirken RevenueCat'teki müşteri kaydını da siler (KVKK/GDPR).
+// Satın alma geçmişi App Store'da kalır; aktif abonelik bununla iptal
+// olmaz. Müşteri zaten yoksa (404) başarılı sayılır.
+async function deleteRevenueCatSubscriber(userId) {
+  const secretKey = process.env.REVENUECAT_SECRET_KEY;
+
+  if (!secretKey) {
+    throw new Error("REVENUECAT_SECRET_KEY tanımlı değil");
+  }
+
+  const response = await fetch(
+    `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(userId)}`,
+    { method: "DELETE", headers: { Authorization: `Bearer ${secretKey}` } }
+  );
+
+  if (!response.ok && response.status !== 404) {
+    const text = await response.text().catch(() => "");
+    throw new RevenueCatError(response.status, text);
+  }
+}
+
 // client verilirse (transaction içi) sayım o bağlantı üzerinden yapılır.
 // Uygulamanın yönettiği kayıtlar (erişte Premium) ve iptal edilenler
 // limite sayılmaz.
@@ -148,6 +169,7 @@ module.exports = {
   FREE_LIMIT,
   RevenueCatError,
   UUID_REGEX,
+  deleteRevenueCatSubscriber,
   getEffectivePlan,
   getSubscriptionCount,
   isValidUserId,

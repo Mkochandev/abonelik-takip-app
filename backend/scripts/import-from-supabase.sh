@@ -142,6 +142,13 @@ begin
 end $$;
 
 -- 3) Hedef tabloları boşalt ----------------------------------------------------
+-- Uygulamanın yönettiği katalog kayıtlarının (erişte Premium) logosu
+-- migration'larla belirlenir (ör. 0002_eriste_logo); Supabase'deki eski
+-- değer bunu ezmesin diye önce saklanır, aktarımdan sonra geri yazılır.
+create temp table keep_managed_logos on commit drop as
+  select managed_by, billing_cycle, logo_url
+  from subscriptions_catalog where managed_by is not null;
+
 -- users ve subscriptions_catalog'a bağlı her şey CASCADE ile boşalır
 -- (oturum ve şifre sıfırlama token'ları dahil).
 set client_min_messages = warning;
@@ -273,6 +280,21 @@ begin
         t, staged, inserted;
     end if;
   end loop;
+end $$;
+
+do $$
+declare
+  n bigint;
+begin
+  update subscriptions_catalog sc
+  set logo_url = k.logo_url
+  from keep_managed_logos k
+  where sc.managed_by = k.managed_by and sc.billing_cycle = k.billing_cycle
+    and sc.logo_url is distinct from k.logo_url;
+  get diagnostics n = row_count;
+  if n > 0 then
+    raise notice 'subscriptions_catalog: % yönetilen kaydın logo_url''i migration değeriyle korundu', n;
+  end if;
 end $$;
 
 -- 6) Sequence'ler -------------------------------------------------------------

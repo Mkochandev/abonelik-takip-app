@@ -4,7 +4,7 @@ export default {
   expo: {
     name: APP_NAME,
     slug: "abonelik-takip",
-        owner: "mkochan",
+    owner: "mkochan",
     extra: {
       eas: {
         projectId: "63f13b8f-5a46-4209-9741-4726e3cc1bab",
@@ -19,8 +19,11 @@ export default {
     ios: {
       supportsTablet: false,
       bundleIdentifier: "com.mkochandev.aboneliktakip",
-      config: {
-        usesNonExemptEncryption: false,
+      // buildNumber burada tutulmaz: eas.json'da appVersionSource "remote" ve
+      // production'da autoIncrement; EAS her build'de bir artırır.
+      infoPlist: {
+        // Yalnızca standart HTTPS kullanılıyor; ihracat uyumluluğu sorusu çıkmasın.
+        ITSAppUsesNonExemptEncryption: false,
       },
     },
     android: {
