@@ -31,10 +31,8 @@ dotenv.config({ path: path.join(BACKEND_DIR, ".env") });
 // db.js bağlantıyı yüklenirken kurduğu için .env'den sonra yüklenir.
 const require = createRequire(import.meta.url);
 const db = require("../src/config/db");
-const { htmlToPlainText } = require("../src/services/priceScanner");
+const { getScanModel, htmlToPlainText } = require("../src/services/priceScanner");
 
-// Kullanıcı "ucuz model" istedi: güncel Haiku.
-const MODEL = "claude-haiku-5-5";
 const POLL_INTERVAL_MS = 30_000;
 const FETCH_TIMEOUT_MS = 20_000;
 const FETCH_CONCURRENCY = 4;
@@ -262,7 +260,7 @@ async function scanDrafts() {
     requests.push({
       custom_id: row.id,
       params: {
-        model: MODEL,
+        model: getScanModel(),
         max_tokens: 2048,
         output_config: { effort: "low", format: { type: "json_schema", schema: PRICE_SCHEMA } },
         messages: [{ role: "user", content: buildPrompt(row, page.text) }],

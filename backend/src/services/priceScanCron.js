@@ -6,7 +6,7 @@
 
 const cron = require("node-cron");
 
-const { scanAllPricesBatch } = require("./priceScanner");
+const { hasPendingBatches, resumePendingBatches, scanAllPricesBatch } = require("./priceScanner");
 
 const DEFAULT_SCHEDULE = "30 3 * * 1";
 const TIMEZONE = "Europe/Istanbul";
@@ -29,6 +29,12 @@ function startPriceScanCron() {
       console.log("priceScanCron: haftalık fiyat taraması (batch) başladı");
 
       try {
+        // Önce yarım kalmış batch'ler; hâlâ biri bekliyorsa yenisi açılmaz.
+        await resumePendingBatches();
+        if (await hasPendingBatches()) {
+          console.warn("priceScanCron: bekleyen bir batch var, bu haftaki tarama atlandı");
+          return;
+        }
         // Özet satırını priceScanner kendisi loglar.
         await scanAllPricesBatch();
       } catch (error) {

@@ -4,14 +4,19 @@
 // İki yol var:
 // - scanAllPrices: kayıtları tek tek, anında tarar (admin paneli "Fiyat tara").
 // - scanAllPricesBatch: bütün istekleri tek bir Message Batch olarak gönderir
-//   (%50 ucuz, sonuç 24 saate kadar sürebilir; haftalık cron).
+//   (%50 ucuz, sonuç 24 saate kadar sürebilir; haftalık cron). Batch id'si
+//   price_scan_batches'e yazılır; backend yeniden başlarsa
+//   resumePendingBatches yarım kalanların sonuçlarını işler.
 
-const { Anthropic } = require("@anthropic-ai/sdk");
+const { Anthropic, NotFoundError } = require("@anthropic-ai/sdk");
 
 const db = require("../config/db");
 
-const ANTHROPIC_MODEL = "claude-haiku-4-5-20251001";
-const MAX_OUTPUT_TOKENS = 256;
+// Tarayıcı ve scripts/seed-catalog.mjs aynı modeli kullanır. Model yapılandırılmış
+// çıktıyı (output_config.format) ve effort'u desteklemeli.
+const DEFAULT_SCAN_MODEL = "claude-haiku-5-5";
+// Model yanıttan önce düşünebildiği için çıktı sınırı JSON'dan geniş tutulur.
+const MAX_OUTPUT_TOKENS = 2048;
 const DELAY_BETWEEN_SCANS_MS = 2000;
 const FETCH_TIMEOUT_MS = 20_000;
 const FETCH_CONCURRENCY = 4;
@@ -22,7 +27,21 @@ const BATCH_POLL_INTERVAL_MS = 5 * 60 * 1000;
 const BATCH_MAX_WAIT_MS = 24 * 60 * 60 * 1000;
 const BATCH_CANCEL_WAIT_MS = 10 * 60 * 1000;
 
+const PRICE_SCHEMA = {
+  type: "object",
+  properties: {
+    price: { anyOf: [{ type: "number" }, { type: "null" }] },
+    confidence: { type: "string", enum: ["high", "medium", "low"] },
+  },
+  required: ["price", "confidence"],
+  additionalProperties: false,
+};
+
 let client = null;
+
+function getScanModel() {
+  return process.env.PRICE_SCAN_MODEL?.trim() || DEFAULT_SCAN_MODEL;
+}
 
 function getClient() {
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -134,12 +153,12 @@ function buildMessageParams(catalogItem, pageText) {
     : catalogItem.app_name;
   const prompt =
     `Bu sayfa içeriğinden ${label} aboneliğinin güncel TL fiyatını çıkar. ` +
-    `Sadece JSON formatında dön: {"price": number veya null, "confidence": "high"|"medium"|"low"}. ` +
     `Fiyatı sayfada bulamazsan price: null dön.\n\nSayfa içeriği:\n${pageText}`;
 
   return {
-    model: ANTHROPIC_MODEL,
+    model: getScanModel(),
     max_tokens: MAX_OUTPUT_TOKENS,
+    output_config: { effort: "low", format: { type: "json_schema", schema: PRICE_SCHEMA } },
     messages: [{ role: "user", content: prompt }],
   };
 }
@@ -149,17 +168,16 @@ function parseExtraction(message) {
     throw new Error("Model yanıtlamadı (refusal)");
   }
 
+  if (message.stop_reason === "max_tokens") {
+    throw new Error("Yanıt çıktı sınırında kesildi");
+  }
+
   const text = message.content.find((block) => block.type === "text")?.text;
   if (!text) {
     throw new Error("Anthropic yanıtında metin bulunamadı");
   }
 
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error("Yanıt JSON içermiyor: " + text.slice(0, 200));
-  }
-
-  const parsed = JSON.parse(jsonMatch[0]);
+  const parsed = JSON.parse(text);
 
   if (parsed.price !== null && typeof parsed.price !== "number") {
     throw new Error("Yanıttaki price alanı geçersiz");
@@ -304,10 +322,14 @@ async function fetchAllPages(urls) {
   return pages;
 }
 
-// Batch bitene kadar periyodik olarak bekler. maxWaitMs dolarsa batch iptal
+
+// Bu süreçte işlenmekte olan batch'ler; açılıştaki devam ile cron aynı batch'i
+// iki kez işlemesin.
+const activeBatchIds = new Set();
+
+// Batch bitene kadar periyodik olarak bekler. deadline geçerse batch iptal
 // edilir; o ana kadar biten istekler yine işlenir, kalanlar "canceled" döner.
-async function waitForBatch(batchId, { pollIntervalMs, maxWaitMs }) {
-  const deadline = Date.now() + maxWaitMs;
+async function waitForBatch(batchId, { pollIntervalMs, deadline }) {
   let batch = await getClient().messages.batches.retrieve(batchId);
 
   while (batch.processing_status !== "ended") {
@@ -332,6 +354,75 @@ async function waitForBatch(batchId, { pollIntervalMs, maxWaitMs }) {
   }
 
   return batch;
+}
+
+async function finishBatchRecord(batchId, status, error = null) {
+  await db.query(
+    "update price_scan_batches set status = $2, error = $3, finished_at = now() where id = $1",
+    [batchId, status, error]
+  );
+}
+
+// Batch'in bitmesini bekler ve sonuçlarını kayıtlara uygular. Kayıtlar batch
+// bittikten sonra okunur (beklerken admin fiyatı değiştirmiş olabilir).
+// NotFound ya da süre aşımında kayıt 'failed' olur; diğer hatalarda (ağ, DB)
+// 'pending' kalır ve sonraki açılışta/cron'da yeniden denenir.
+async function collectBatchResults(batchId, catalogIds, { pollIntervalMs, deadline, details, stats }) {
+  activeBatchIds.add(batchId);
+  try {
+    let batch;
+    try {
+      batch = await waitForBatch(batchId, { pollIntervalMs, deadline });
+    } catch (error) {
+      if (error instanceof NotFoundError) {
+        await finishBatchRecord(batchId, "failed", "Batch bulunamadı");
+      }
+      throw error;
+    }
+
+    const { rows } = await db.query(
+      "select * from subscriptions_catalog where id = any($1::uuid[]) and managed_by is null",
+      [catalogIds]
+    );
+    const rowsById = new Map(rows.map((row) => [row.id, row]));
+    const pending = new Set(catalogIds);
+
+    if (batch.processing_status === "ended") {
+      // Sonuçlar herhangi bir sırada gelir; custom_id katalog id'sidir.
+      for await (const result of await getClient().messages.batches.results(batchId)) {
+        if (!pending.delete(result.custom_id)) continue;
+        const row = rowsById.get(result.custom_id);
+        if (!row) {
+          details.push(failedResult({ id: result.custom_id, app_name: result.custom_id }, new Error("Katalog kaydı yok")));
+          continue;
+        }
+
+        if (result.result.type !== "succeeded") {
+          details.push(failedResult(row, new Error(`Batch isteği ${result.result.type}`)));
+          continue;
+        }
+
+        addUsage(stats.usage, result.result.message.usage);
+        try {
+          details.push(await applyExtraction(row, parseExtraction(result.result.message)));
+        } catch (error) {
+          details.push(failedResult(row, error));
+        }
+      }
+    }
+
+    for (const id of pending) {
+      details.push(failedResult(rowsById.get(id) ?? { id, app_name: id }, new Error("Batch sonucu alınamadı")));
+    }
+
+    if (batch.processing_status === "ended") {
+      await finishBatchRecord(batchId, "processed");
+    } else {
+      await finishBatchRecord(batchId, "failed", "Süre sınırı aşıldı, batch bitmedi");
+    }
+  } finally {
+    activeBatchIds.delete(batchId);
+  }
 }
 
 // Bütün kayıtları tek bir Message Batch ile tarar (%50 ucuz). Sayfalar önce
@@ -360,37 +451,27 @@ async function scanAllPricesBatch({
   stats.requests = requests.length;
 
   if (requests.length > 0) {
+    const catalogIds = requests.map((request) => request.custom_id);
     const created = await getClient().messages.batches.create({ requests });
     console.log(`priceScanner[batch]: ${created.id} oluşturuldu (${requests.length} istek)`);
 
-    const batch = await waitForBatch(created.id, { pollIntervalMs, maxWaitMs });
-
-    const rowsById = new Map(rows.map((row) => [row.id, row]));
-    const pending = new Set(requests.map((request) => request.custom_id));
-
-    if (batch.processing_status === "ended") {
-      for await (const result of await getClient().messages.batches.results(batch.id)) {
-        const row = rowsById.get(result.custom_id);
-        if (!row) continue;
-        pending.delete(row.id);
-
-        if (result.result.type !== "succeeded") {
-          details.push(failedResult(row, new Error(`Batch isteği ${result.result.type}`)));
-          continue;
-        }
-
-        addUsage(stats.usage, result.result.message.usage);
-        try {
-          details.push(await applyExtraction(row, parseExtraction(result.result.message)));
-        } catch (error) {
-          details.push(failedResult(row, error));
-        }
-      }
+    // Kayıt yazılamasa da bu süreçte sonuçlar yine işlenir; yalnızca yeniden
+    // başlatmada devam edilemez.
+    try {
+      await db.query("insert into price_scan_batches (id, catalog_ids) values ($1, $2::uuid[])", [
+        created.id,
+        catalogIds,
+      ]);
+    } catch (error) {
+      console.error(`priceScanner[batch]: ${created.id} veritabanına yazılamadı:`, error.message);
     }
 
-    for (const id of pending) {
-      details.push(failedResult(rowsById.get(id), new Error("Batch sonucu alınamadı")));
-    }
+    await collectBatchResults(created.id, catalogIds, {
+      pollIntervalMs,
+      deadline: Date.now() + maxWaitMs,
+      details,
+      stats,
+    });
   }
 
   const summary = buildSummary(details, stats);
@@ -398,4 +479,46 @@ async function scanAllPricesBatch({
   return summary;
 }
 
-module.exports = { htmlToPlainText, scanSinglePrice, scanAllPrices, scanAllPricesBatch };
+// Yarım kalmış (status = 'pending') batch'lerin sonuçlarını işler; backend
+// açılışında ve haftalık taramadan önce çağrılır. Bu süreçte zaten işlenen
+// batch'ler atlanır. Süre sınırı batch'in oluşturulma zamanından sayılır.
+async function resumePendingBatches({ pollIntervalMs = BATCH_POLL_INTERVAL_MS } = {}) {
+  const { rows } = await db.query(
+    "select id, catalog_ids, created_at from price_scan_batches where status = 'pending' order by created_at"
+  );
+
+  for (const record of rows) {
+    if (activeBatchIds.has(record.id)) continue;
+
+    console.log(`priceScanner[batch]: yarım kalan ${record.id} kaldığı yerden işleniyor`);
+    const stats = { requests: record.catalog_ids.length, usage: emptyUsage() };
+    const details = [];
+
+    try {
+      await collectBatchResults(record.id, record.catalog_ids, {
+        pollIntervalMs,
+        deadline: new Date(record.created_at).getTime() + BATCH_MAX_WAIT_MS,
+        details,
+        stats,
+      });
+      logScanSummary("batch-devam", buildSummary(details, stats));
+    } catch (error) {
+      console.error(`priceScanner[batch]: ${record.id} işlenemedi:`, error.message);
+    }
+  }
+}
+
+async function hasPendingBatches() {
+  const { rows } = await db.query("select 1 from price_scan_batches where status = 'pending' limit 1");
+  return rows.length > 0;
+}
+
+module.exports = {
+  getScanModel,
+  htmlToPlainText,
+  scanSinglePrice,
+  scanAllPrices,
+  scanAllPricesBatch,
+  resumePendingBatches,
+  hasPendingBatches,
+};
