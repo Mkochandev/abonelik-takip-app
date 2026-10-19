@@ -32,23 +32,12 @@ dotenv.config({ path: path.join(BACKEND_DIR, ".env") });
 const require = createRequire(import.meta.url);
 const db = require("../src/config/db");
 const { getScanModel, htmlToPlainText } = require("../src/services/priceScanner");
+const { CATEGORIES } = require("../src/config/categories");
 
 const POLL_INTERVAL_MS = 30_000;
 const FETCH_TIMEOUT_MS = 20_000;
 const FETCH_CONCURRENCY = 4;
 
-const CATEGORIES = [
-  "Video/Dizi-Film",
-  "Müzik",
-  "Kitap/Sesli Kitap",
-  "Yapay Zeka",
-  "Bulut Depolama",
-  "Üretkenlik/Tasarım",
-  "Oyun",
-  "Alışveriş/Üyelik",
-  "VPN/Güvenlik",
-  "Spor",
-];
 const CURRENCIES = ["TRY", "USD", "EUR"];
 const BILLING_CYCLES = ["monthly", "yearly"];
 

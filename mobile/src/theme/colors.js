@@ -66,4 +66,18 @@ export const categoryColors = {
   "Alışveriş/Üyelik": "#E8DCC8",
   "VPN/Güvenlik": "#D5DCE8",
   Spor: "#FFD0CC",
+  "Eğitim/Dil": "#C8E6F0",
+  "Sağlık/Meditasyon": "#D9F2D0",
+  "Haber/Gazete": "#EEDFF7",
+  "Yazılım/Geliştirici": "#C9D9F2",
+  "Sosyal/Tanışma": "#FCD3D9",
+  Diğer: "#E4E2EA",
 };
+
+// Uygulamanın tanımadığı (ör. sonradan panelden eklenen) kategoriler için
+// nötr pastel.
+export const fallbackCategoryColor = "#E4E2EA";
+
+export function getCategoryColor(category) {
+  return categoryColors[category] ?? fallbackCategoryColor;
+}

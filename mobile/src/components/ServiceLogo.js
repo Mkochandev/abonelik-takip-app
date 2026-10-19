@@ -2,7 +2,7 @@ import { useState } from "react";
 import { View } from "react-native";
 import { Image } from "expo-image";
 
-import { useTheme } from "../theme";
+import { getCategoryColor, useTheme } from "../theme";
 import { AppTile } from "./AppTile";
 
 // Anahtar yoksa alan adından logo üretilemez; yalnızca logoUrl'si olan
@@ -33,7 +33,7 @@ function getLogoUri(domain, logoUrl, isDark) {
 // Servisin gerçek logosu (Logo.dev). Logo kaynağı yoksa ya da yüklenemezse
 // kategori pastelli baş harf karosuna (AppTile) düşer.
 export function ServiceLogo({ domain, logoUrl, name = "", category, size = 44 }) {
-  const { colors, radius, categories, isDark } = useTheme();
+  const { colors, radius, isDark } = useTheme();
   // Yüklenemeyen adres tutulur; kaynak değişirse yeni adres yeniden denenir.
   const [failedUri, setFailedUri] = useState(null);
 
@@ -41,7 +41,7 @@ export function ServiceLogo({ domain, logoUrl, name = "", category, size = 44 })
   const uri = localLogo ? null : getLogoUri(domain, logoUrl, isDark);
 
   if (!localLogo && (!uri || failedUri === uri)) {
-    return <AppTile name={name} color={categories[category]} size={size} />;
+    return <AppTile name={name} color={category ? getCategoryColor(category) : undefined} size={size} />;
   }
 
   return (

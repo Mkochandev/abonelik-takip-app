@@ -3,6 +3,12 @@ const express = require("express");
 const db = require("../config/db");
 const requireAdminSecret = require("../middleware/requireAdminSecret");
 const { scanAllPrices } = require("../services/priceScanner");
+const {
+  DEFAULT_MAX_SEARCHES,
+  listRecentRuns,
+  runDiscovery,
+  runPriceSearch,
+} = require("../services/catalogDiscovery");
 
 const router = express.Router();
 
@@ -122,6 +128,105 @@ router.post("/scan-prices", (req, res) => {
 // GET /api/admin/catalog/scan-status — son/devam eden taramanın durumu
 router.get("/scan-status", (req, res) => {
   res.json(scanState);
+});
+
+// Panelden başlatılan keşif / fiyat bulmanın canlı durumu (bellekte; geçmiş
+// çalıştırmalar discovery_runs tablosunda).
+let discoveryState = {
+  status: "idle", // idle | running | completed | stopped | failed
+  kind: null,
+  started_at: null,
+  finished_at: null,
+  progress: null,
+  summary: null,
+  error: null,
+};
+
+const MAX_ADMIN_SEARCHES = 1000;
+
+// Panel için özet: fiyat bulmanın kayıt kayıt ayrıntısı listelenmez.
+function compactSummary(summary) {
+  if (!summary) return null;
+  const { details, ...rest } = summary;
+  return rest;
+}
+
+// POST /api/admin/catalog/discovery/start — { kind: "discover" | "prices",
+// max_searches?, include_active? }. Panelden başlatılan iş anında (tek tek)
+// çalışır; arka planda başlatılır ve hemen 202 dönülür.
+router.post("/discovery/start", (req, res) => {
+  if (discoveryState.status === "running") {
+    return res.status(202).json({ ...discoveryState, already_running: true });
+  }
+
+  const kind = req.body?.kind;
+  if (kind !== "discover" && kind !== "prices") {
+    return res.status(400).json({ error: 'kind "discover" ya da "prices" olmalı' });
+  }
+
+  const maxSearches = req.body.max_searches ?? DEFAULT_MAX_SEARCHES;
+  if (!Number.isInteger(maxSearches) || maxSearches < 1 || maxSearches > MAX_ADMIN_SEARCHES) {
+    return res.status(400).json({ error: `max_searches 1-${MAX_ADMIN_SEARCHES} arası bir tam sayı olmalı` });
+  }
+
+  discoveryState = {
+    status: "running",
+    kind,
+    started_at: new Date().toISOString(),
+    finished_at: null,
+    progress: { done: 0, total: null, searches: 0 },
+    summary: null,
+    error: null,
+  };
+
+  const options = {
+    mode: "sync",
+    trigger: "admin",
+    maxSearches,
+    log: (message) => console.log(`catalogDiscovery[panel]: ${message}`),
+    onProgress: ({ done, total, usage }) => {
+      discoveryState.progress = { done, total, searches: usage.searches };
+    },
+  };
+
+  const run =
+    kind === "discover"
+      ? runDiscovery(options)
+      : runPriceSearch({ ...options, includeActive: req.body.include_active === true });
+
+  run
+    .then(({ status, summary }) => {
+      discoveryState = {
+        ...discoveryState,
+        status,
+        finished_at: new Date().toISOString(),
+        summary: compactSummary(summary),
+      };
+    })
+    .catch((error) => {
+      console.error("discovery: çalıştırma sırasında hata:", error.message);
+      discoveryState = {
+        ...discoveryState,
+        status: "failed",
+        finished_at: new Date().toISOString(),
+        error: error.message,
+      };
+    });
+
+  res.status(202).json(discoveryState);
+});
+
+// GET /api/admin/catalog/discovery/status — canlı durum ve son 5 çalıştırma
+router.get("/discovery/status", async (req, res) => {
+  try {
+    const runs = await listRecentRuns(5);
+    res.json({
+      ...discoveryState,
+      runs: runs.map((run) => ({ ...run, summary: compactSummary(run.summary) })),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // GET /api/admin/catalog — tüm katalog, düz liste (admin panel için)

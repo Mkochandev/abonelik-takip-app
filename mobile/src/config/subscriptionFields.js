@@ -68,4 +68,9 @@ export const REASON_OPTIONS = {
   "Alışveriş/Üyelik": ["Ücretsiz kargo", "İndirim ve kampanyalar", "Yemek siparişi", "Ek üyelik avantajları"],
   "VPN/Güvenlik": ["Gizlilik", "Erişim engelini aşmak", "Halka açık Wi-Fi'da güvenlik", "Şifre yönetimi"],
   Spor: ["Maç takibi", "Belirli bir takım/lig için", "Genel spor içerikleri", "Antrenman takibi"],
+  "Eğitim/Dil": ["Dil öğrenmek için", "Sınava hazırlık", "Mesleki gelişim", "Çocuğum için"],
+  "Sağlık/Meditasyon": ["Meditasyon/uyku", "Egzersiz takibi", "Beslenme/diyet", "Ruh sağlığı"],
+  "Haber/Gazete": ["Günlük haber takibi", "Belirli bir yayın için", "Reklamsız okuma", "İş/ekonomi haberleri"],
+  "Yazılım/Geliştirici": ["İş projeleri için", "Kişisel projeler", "Ekip/şirket hesabı", "Öğrenme"],
+  "Sosyal/Tanışma": ["Daha fazla eşleşme", "Reklamsız kullanım", "Ek özellikler", "Profil görünürlüğü"],
 };

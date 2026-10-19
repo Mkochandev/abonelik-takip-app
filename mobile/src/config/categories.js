@@ -10,4 +10,10 @@ export const CATEGORIES = [
   "Alışveriş/Üyelik",
   "VPN/Güvenlik",
   "Spor",
+  "Eğitim/Dil",
+  "Sağlık/Meditasyon",
+  "Haber/Gazete",
+  "Yazılım/Geliştirici",
+  "Sosyal/Tanışma",
+  "Diğer",
 ];

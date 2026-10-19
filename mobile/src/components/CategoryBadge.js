@@ -1,16 +1,16 @@
 import { View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
-import { useTheme } from "../theme";
-import { categoryIconPaths } from "./icons/categoryPaths";
+import { getCategoryColor, useTheme } from "../theme";
+import { getCategoryIconPaths } from "./icons/categoryPaths";
 
 const SIZE = 48;
 const ICON_SIZE = 24;
 
 export function CategoryBadge({ category, size = SIZE, style }) {
-  const { categories, brand } = useTheme();
-  const backgroundColor = categories[category] ?? categories["Video/Dizi-Film"];
-  const paths = categoryIconPaths[category] ?? [];
+  const { brand } = useTheme();
+  const backgroundColor = getCategoryColor(category);
+  const paths = getCategoryIconPaths(category);
   const iconSize = (ICON_SIZE / SIZE) * size;
 
   return (

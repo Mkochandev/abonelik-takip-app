@@ -1,15 +1,15 @@
 import { Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
-import { useTheme } from "../theme";
-import { categoryIconPaths } from "./icons/categoryPaths";
+import { getCategoryColor, useTheme } from "../theme";
+import { getCategoryIconPaths } from "./icons/categoryPaths";
 
 // Kategori pastelinde küçük etiket: mini ikon + isim (detay ekranındaki
 // kategori rozeti gibi kompakt yerlerde kullanılır).
 export function CategoryTag({ category, style }) {
-  const { categories, brand, pillRadius } = useTheme();
-  const backgroundColor = categories[category] ?? categories["Video/Dizi-Film"];
-  const paths = categoryIconPaths[category] ?? [];
+  const { brand, pillRadius } = useTheme();
+  const backgroundColor = getCategoryColor(category);
+  const paths = getCategoryIconPaths(category);
 
   return (
     <View

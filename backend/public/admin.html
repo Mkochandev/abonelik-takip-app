@@ -400,6 +400,38 @@
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 8px;
   }
+
+  .drafts-toolbar select,
+  .drafts-toolbar input[type="number"] {
+    width: auto;
+  }
+
+  .quick-price {
+    display: flex;
+    gap: 4px;
+    margin-top: 6px;
+  }
+
+  .quick-price input {
+    width: 96px;
+  }
+
+  .evidence {
+    color: var(--text2);
+    font-size: 12px;
+    max-width: 240px;
+    cursor: help;
+  }
+
+  .badge.confidence-high {
+    background: #D7F2DC;
+    color: #1D5B2A;
+  }
+
+  .badge.confidence-low {
+    background: #FFE0DC;
+    color: #8A2A1F;
+  }
 </style>
 </head>
 <body>
@@ -458,19 +490,67 @@
 
     <div id="draftsTab" hidden>
       <div class="card">
+        <h2>Keşif</h2>
+        <p class="draft-note" style="max-width: none">
+          Web aramasıyla yeni servis/plan bulur ya da fiyatı olmayan taslakların resmi fiyatını arar.
+          Bulunanlar taslak olarak gelir; hiçbir kayıt otomatik yayına alınmaz. Panelden başlatılan
+          iş tek tek çalışır (dakikalar sürebilir); arama sınırına gelince durur, kalanı bir sonraki
+          çalıştırmada devam eder.
+        </p>
+        <div class="drafts-toolbar">
+          <label>
+            Arama sınırı
+            <input id="discoveryMaxSearches" type="number" min="1" max="1000" step="1" value="200" />
+          </label>
+          <button id="discoverButton" type="button">Keşfi başlat</button>
+          <button id="findPricesButton" type="button" class="secondary">Fiyatları bul</button>
+          <span id="discoveryStatus"></span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Başlangıç</th>
+              <th>İş</th>
+              <th>Durum</th>
+              <th>Arama</th>
+              <th>Token</th>
+              <th>Sonuç</th>
+            </tr>
+          </thead>
+          <tbody id="discoveryRunsBody"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
         <h2>Taslaklar</h2>
         <p class="draft-note" style="max-width: none">
           Toplu eklenen ve onay bekleyen kayıtlar. Fiyatlar tarayıcının bulduğu değerdir; kaynak
           sayfadan kontrol edip onayla. Fiyatı olmayan kayıt onaylanamaz.
         </p>
         <div class="drafts-toolbar">
+          <select id="draftCategoryFilter"></select>
+          <select id="draftConfidenceFilter">
+            <option value="">Tüm güven düzeyleri</option>
+            <option value="high">Yüksek güven</option>
+            <option value="medium">Orta güven</option>
+            <option value="low">Düşük güven</option>
+            <option value="none">Güven bilgisi yok</option>
+          </select>
+          <select id="draftPriceFilter">
+            <option value="">Fiyatı olan ve olmayan</option>
+            <option value="priced">Fiyatı olanlar</option>
+            <option value="unpriced">Fiyatı olmayanlar</option>
+          </select>
+          <label class="catalog-filter" style="margin: 0">
+            <input id="draftLogoFilter" type="checkbox" />
+            Sadece logosu olmayanlar
+          </label>
+        </div>
+        <div class="drafts-toolbar">
           <label><input id="draftSelectAll" type="checkbox" /> Tümünü seç</label>
+          <button id="selectHighConfidenceButton" type="button" class="secondary">Yüksek güvenlileri seç</button>
           <button id="approveSelectedButton" type="button" disabled>Seçilenleri onayla</button>
           <button id="hideSelectedButton" type="button" class="secondary" disabled>Seçilenleri gizle</button>
-          <label class="catalog-filter" style="margin: 0">
-            <input id="draftPricedFilter" type="checkbox" />
-            Sadece fiyatı bulunanlar
-          </label>
         </div>
         <table>
           <thead>
@@ -480,6 +560,8 @@
               <th>Uygulama</th>
               <th>Plan</th>
               <th>Bulunan fiyat</th>
+              <th>Güven</th>
+              <th>Kanıt</th>
               <th>Kaynak</th>
               <th>Kategori</th>
               <th></th>
@@ -566,6 +648,12 @@
       "Alışveriş/Üyelik",
       "VPN/Güvenlik",
       "Spor",
+      "Eğitim/Dil",
+      "Sağlık/Meditasyon",
+      "Haber/Gazete",
+      "Yazılım/Geliştirici",
+      "Sosyal/Tanışma",
+      "Diğer",
     ];
     // Mobil uygulamadaki kategori pastelleri (baş harf karosu zemini).
     const CATEGORY_COLORS = {
@@ -579,6 +667,12 @@
       "Alışveriş/Üyelik": "#E8DCC8",
       "VPN/Güvenlik": "#D5DCE8",
       "Spor": "#FFD0CC",
+      "Eğitim/Dil": "#C8E6F0",
+      "Sağlık/Meditasyon": "#D9F2D0",
+      "Haber/Gazete": "#EEDFF7",
+      "Yazılım/Geliştirici": "#C9D9F2",
+      "Sosyal/Tanışma": "#FCD3D9",
+      "Diğer": "#E4E2EA",
     };
     const LOGO_PREVIEW_DEBOUNCE_MS = 400;
     let adminSecret = sessionStorage.getItem("adminSecret") || "";
@@ -914,12 +1008,31 @@
     const approveSelectedButton = document.getElementById("approveSelectedButton");
     const hideSelectedButton = document.getElementById("hideSelectedButton");
     const selectedDraftIds = new Set();
+    // Logo.dev'den logosu gelmeyen taslaklar (görsel yüklenemedikçe eklenir).
+    const failedLogoIds = new Set();
     let draftEditingId = null;
-    let onlyPricedDrafts = false;
+    const draftFilters = { category: "", confidence: "", price: "", noLogo: false };
+
+    const CONFIDENCE_LABELS = { high: "yüksek", medium: "orta", low: "düşük" };
+    const TAG_LABELS = { "ai-discovery": "AI keşif", "app-store-price": "App Store fiyatı" };
+    const EVIDENCE_PREVIEW_LENGTH = 90;
+
+    document.getElementById("draftCategoryFilter").innerHTML =
+      `<option value="">Tüm kategoriler</option>` +
+      CATEGORIES.map((category) => `<option value="${category}">${category}</option>`).join("");
+
+    function matchesDraftFilters(item) {
+      const { category, confidence, price, noLogo } = draftFilters;
+      if (category && item.category !== category) return false;
+      if (confidence === "none" && item.price_confidence) return false;
+      if (confidence && confidence !== "none" && item.price_confidence !== confidence) return false;
+      if (price && (price === "priced") !== (item.current_price != null)) return false;
+      if (noLogo && !isMissingLogo(item) && !failedLogoIds.has(item.id)) return false;
+      return true;
+    }
 
     function draftItems() {
-      const drafts = catalogCache.filter((item) => item.status === "draft");
-      return onlyPricedDrafts ? drafts.filter((item) => item.current_price != null) : drafts;
+      return catalogCache.filter((item) => item.status === "draft" && matchesDraftFilters(item));
     }
 
     function selectedVisibleDraftIds() {
@@ -941,12 +1054,39 @@
 
     function draftPriceHtml(item) {
       if (item.current_price == null) {
-        return `<span class="badge warn">bulunamadı</span>`;
+        return `<span class="badge warn">bulunamadı</span>
+          <div class="quick-price">
+            <input type="number" step="0.01" min="0" placeholder="Fiyat" data-quick-price="${item.id}" />
+            <button type="button" data-draft-action="quick-price" data-id="${item.id}">Kaydet</button>
+          </div>`;
       }
       const cycle = item.billing_cycle === "yearly" ? " / yıl" : " / ay";
       const unverified =
         item.price_status === "unverified" ? `<span class="badge">doğrulanmadı</span>` : "";
       return `${escapeHtml(item.current_price)} ${escapeHtml(item.currency)}${cycle}${unverified}`;
+    }
+
+    function confidenceHtml(confidence) {
+      if (!confidence) return "—";
+      return `<span class="badge confidence-${confidence}">${CONFIDENCE_LABELS[confidence] || escapeHtml(confidence)}</span>`;
+    }
+
+    // Kısa önizleme; tam metin üzerine gelince (title) görünür.
+    function evidenceHtml(evidence) {
+      if (!evidence) return "—";
+      const preview =
+        evidence.length > EVIDENCE_PREVIEW_LENGTH
+          ? `${evidence.slice(0, EVIDENCE_PREVIEW_LENGTH)}…`
+          : evidence;
+      return `<div class="evidence" title="${escapeHtml(evidence)}">${escapeHtml(preview)}</div>`;
+    }
+
+    function hostLabel(url) {
+      try {
+        return new URL(url).hostname.replace(/^www\./, "");
+      } catch (err) {
+        return "kaynak";
+      }
     }
 
     function renderDrafts() {
@@ -956,20 +1096,28 @@
 
       const items = draftItems();
       if (items.length === 0) {
-        draftsBody.innerHTML = `<tr><td colspan="8">Onay bekleyen taslak yok.</td></tr>`;
+        draftsBody.innerHTML = `<tr><td colspan="10">${
+          allDrafts.length ? "Filtrelere uyan taslak yok." : "Onay bekleyen taslak yok."
+        }</td></tr>`;
       }
 
       for (const item of items) {
         const row = document.createElement("tr");
         const isEditing = draftEditingId === item.id;
         const source = item.source_url
-          ? `<a href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener">kaynak ↗</a>`
+          ? `<a href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener">${escapeHtml(
+              hostLabel(item.source_url)
+            )} ↗</a>`
           : "—";
+        const tags = (item.source_tags || [])
+          .map((tag) => `<span class="badge">${escapeHtml(TAG_LABELS[tag] || tag)}</span>`)
+          .join("");
         const note = item.source_note
           ? `<div class="draft-note">${escapeHtml(item.source_note)}</div>`
           : "";
 
         row.className = isEditing ? "editing" : "";
+        row.dataset.id = item.id;
         row.innerHTML = `
           <td><input type="checkbox" data-select="${item.id}" ${selectedDraftIds.has(item.id) ? "checked" : ""} /></td>
           <td>${logoTileHtml(item)}</td>
@@ -977,7 +1125,9 @@
             <div class="domain-hint">${escapeHtml(item.domain || "alan adı yok")}</div></td>
           <td>${escapeHtml(item.plan_name || "")}</td>
           <td>${draftPriceHtml(item)}${note}</td>
-          <td>${source}</td>
+          <td>${confidenceHtml(item.price_confidence)}</td>
+          <td>${evidenceHtml(item.price_evidence)}</td>
+          <td>${source}<div>${tags}</div></td>
           <td>${escapeHtml(item.category || "—")}</td>
           <td class="actions">
             <button data-draft-action="approve" data-id="${item.id}" ${item.current_price == null ? "disabled" : ""}>Onayla</button>
@@ -992,7 +1142,7 @@
           editRow.className = "edit-logo-row";
           editRow.innerHTML = `
             <td></td>
-            <td colspan="7">
+            <td colspan="9">
               <div class="draft-edit">
                 <input id="draftEditPlan" placeholder="plan_name" value="${escapeHtml(item.plan_name || "")}" />
                 <input id="draftEditPrice" type="number" step="0.01" placeholder="Fiyat" value="${escapeHtml(item.current_price ?? "")}" />
@@ -1032,6 +1182,8 @@
       "error",
       (event) => {
         if (event.target.tagName === "IMG" && event.target.closest(".logo-tile")) {
+          const row = event.target.closest("tr");
+          if (row && row.dataset.id) failedLogoIds.add(row.dataset.id);
           markLogoFailed(event.target);
         }
       },
@@ -1045,6 +1197,21 @@
 
       if (action === "approve" || action === "hide") {
         await setCatalogStatus(action, [id]);
+      } else if (action === "quick-price") {
+        const input = draftsBody.querySelector(`[data-quick-price="${id}"]`);
+        const price = input ? input.value.trim() : "";
+        if (price === "" || Number(price) < 0) {
+          setStatus("Geçerli bir fiyat gir.", "error");
+          return;
+        }
+        try {
+          // Elle girilen fiyat doğrulanmış sayılır (backend).
+          await apiRequest(`/${id}`, { method: "PUT", body: JSON.stringify({ current_price: price }) });
+          setStatus("Fiyat kaydedildi.", "ok");
+          await loadCatalog();
+        } catch (err) {
+          setStatus(err.message, "error");
+        }
       } else if (action === "edit") {
         draftEditingId = id;
         renderDrafts();
@@ -1094,10 +1261,165 @@
       }
     });
 
-    document.getElementById("draftPricedFilter").addEventListener("change", (event) => {
-      onlyPricedDrafts = event.target.checked;
+    for (const [elementId, key] of [
+      ["draftCategoryFilter", "category"],
+      ["draftConfidenceFilter", "confidence"],
+      ["draftPriceFilter", "price"],
+    ]) {
+      document.getElementById(elementId).addEventListener("change", (event) => {
+        draftFilters[key] = event.target.value;
+        renderDrafts();
+      });
+    }
+
+    document.getElementById("draftLogoFilter").addEventListener("change", (event) => {
+      draftFilters.noLogo = event.target.checked;
       renderDrafts();
     });
+
+    // Görünen taslaklardan fiyatı olan ve güveni yüksek olanları seçer.
+    document.getElementById("selectHighConfidenceButton").addEventListener("click", () => {
+      for (const item of draftItems()) {
+        if (item.price_confidence === "high" && item.current_price != null) {
+          selectedDraftIds.add(item.id);
+        }
+      }
+      renderDrafts();
+    });
+
+    // Enter ile hızlı fiyat kaydı.
+    draftsBody.addEventListener("keydown", (event) => {
+      const id = event.target.dataset.quickPrice;
+      if (id && event.key === "Enter") {
+        draftsBody.querySelector(`button[data-draft-action="quick-price"][data-id="${id}"]`)?.click();
+      }
+    });
+
+    // --- Keşif -------------------------------------------------------------
+
+    const discoverButton = document.getElementById("discoverButton");
+    const findPricesButton = document.getElementById("findPricesButton");
+    const discoveryStatusEl = document.getElementById("discoveryStatus");
+    const discoveryRunsBody = document.getElementById("discoveryRunsBody");
+    const DISCOVERY_POLL_INTERVAL_MS = 4000;
+    const RUN_STATUS_LABELS = {
+      running: "sürüyor",
+      completed: "bitti",
+      stopped: "arama sınırında durdu",
+      failed: "başarısız",
+    };
+    let discoveryPollTimer = null;
+    let discoveryWasRunning = false;
+
+    function runKindLabel(run) {
+      const kind = run.kind === "discover" ? "Keşif" : "Fiyat bulma";
+      const source = run.trigger === "admin" ? "panel" : `komut satırı, ${run.mode === "batch" ? "batch" : "tek tek"}`;
+      return `${kind} (${source})`;
+    }
+
+    function runResultText(run) {
+      if (run.error) return run.error;
+      const summary = run.summary;
+      if (!summary) return "—";
+      const remaining = summary.remainingCount ? `, kalan ${summary.remainingCount}` : "";
+      const cost = summary.cost && summary.cost.total != null ? `, ~$${summary.cost.total.toFixed(2)}` : "";
+      if (summary.kind === "discover") {
+        return `eklenen ${summary.added}, atlanan ${summary.skipped}${remaining}${cost}`;
+      }
+      return (
+        `${summary.total} kayıt: bulunan ${summary.found}, bulunamayan ${summary.notFound}, ` +
+        `reddedilen ${summary.rejected}, hata ${summary.failed}${remaining}${cost}`
+      );
+    }
+
+    function renderDiscoveryRuns(runs) {
+      discoveryRunsBody.innerHTML = runs.length
+        ? ""
+        : `<tr><td colspan="6">Henüz keşif çalıştırılmadı.</td></tr>`;
+      for (const run of runs) {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${new Date(run.started_at).toLocaleString("tr-TR")}</td>
+          <td>${escapeHtml(runKindLabel(run))}</td>
+          <td>${escapeHtml(RUN_STATUS_LABELS[run.status] || run.status)}</td>
+          <td>${run.searches_used} / ${run.max_searches}</td>
+          <td>${Number(run.input_tokens) + Number(run.output_tokens)}</td>
+          <td>${escapeHtml(runResultText(run))}</td>
+        `;
+        discoveryRunsBody.appendChild(row);
+      }
+    }
+
+    // Durumu ekrana yansıtır; iş sürüyorsa true döner.
+    function renderDiscoveryState(state) {
+      renderDiscoveryRuns(state.runs || []);
+      const running = state.status === "running";
+      discoverButton.disabled = running;
+      findPricesButton.disabled = running;
+
+      if (running) {
+        const label = state.kind === "discover" ? "Keşif" : "Fiyat bulma";
+        const progress = state.progress && state.progress.total
+          ? ` ${state.progress.done}/${state.progress.total} · ${state.progress.searches} arama`
+          : "";
+        discoveryStatusEl.textContent = `${label} sürüyor...${progress}`;
+      } else if (state.status !== "idle") {
+        discoveryStatusEl.textContent =
+          state.status === "failed"
+            ? `Başarısız: ${state.error}`
+            : `${RUN_STATUS_LABELS[state.status]}: ${runResultText({ summary: state.summary })}`;
+      }
+      return running;
+    }
+
+    async function pollDiscoveryStatus() {
+      clearTimeout(discoveryPollTimer);
+      try {
+        const state = await apiRequest("/discovery/status", { method: "GET" });
+        if (renderDiscoveryState(state)) {
+          discoveryWasRunning = true;
+          discoveryPollTimer = setTimeout(pollDiscoveryStatus, DISCOVERY_POLL_INTERVAL_MS);
+        } else if (discoveryWasRunning) {
+          // Bu sayfada takip edilen iş bitti; yeni taslaklar/fiyatlar yüklensin.
+          discoveryWasRunning = false;
+          await loadCatalog();
+        }
+      } catch (err) {
+        discoverButton.disabled = false;
+        findPricesButton.disabled = false;
+        setStatus(err.message, "error");
+      }
+    }
+
+    async function startDiscovery(kind) {
+      const maxSearches = Number(document.getElementById("discoveryMaxSearches").value);
+      if (!Number.isInteger(maxSearches) || maxSearches < 1 || maxSearches > 1000) {
+        setStatus("Arama sınırı 1-1000 arası bir tam sayı olmalı.", "error");
+        return;
+      }
+      const question =
+        kind === "discover"
+          ? `Keşif başlatılsın mı? En fazla ${maxSearches} web araması yapılır (~$${(maxSearches * 0.01).toFixed(2)} + token).`
+          : `Fiyatı olmayan taslaklar için fiyat aransın mı? En fazla ${maxSearches} web araması yapılır (~$${(maxSearches * 0.01).toFixed(2)} + token).`;
+      if (!confirm(question)) return;
+
+      discoverButton.disabled = true;
+      findPricesButton.disabled = true;
+      try {
+        await apiRequest("/discovery/start", {
+          method: "POST",
+          body: JSON.stringify({ kind, max_searches: maxSearches }),
+        });
+        await pollDiscoveryStatus();
+      } catch (err) {
+        discoverButton.disabled = false;
+        findPricesButton.disabled = false;
+        setStatus(err.message, "error");
+      }
+    }
+
+    discoverButton.addEventListener("click", () => startDiscovery("discover"));
+    findPricesButton.addEventListener("click", () => startDiscovery("prices"));
 
     // Sekmeler
     for (const tabButton of document.querySelectorAll(".tabs button")) {
@@ -1376,6 +1698,7 @@
         await loadConfig();
         await loadCatalog();
         resumeScanIfRunning();
+        pollDiscoveryStatus();
       } catch (err) {
         setStatus(err.message, "error");
       }
@@ -1385,6 +1708,7 @@
       showAuthenticated();
       loadConfig().then(loadCatalog);
       resumeScanIfRunning();
+      pollDiscoveryStatus();
     } else {
       showLoggedOut();
     }
